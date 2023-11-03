@@ -160,6 +160,7 @@ double toposort_matrix_selector(SHARED int64_t *rperm, SHARED int64_t *cperm, sp
     int64_t r_and_c_done = 0;
     int64_t col_level, row, pe, curr_col;
     while (r_and_c_done != (lnr + lnc)) {
+      //Use the finish wrapper around the row loop (maybe move the finish from above)
       while (rownext < rowlast) {
         row = pkg.row = lrowqueue[rownext];
         pkg.row |= type_mask;
@@ -518,6 +519,8 @@ int main(int argc, char * argv[]) {
 
     if( check_is_triangle(mat, rperminv2, cperminv2, dump_files) ) {
       printf("\nERROR: After toposort_matrix_upc: mat2 is not upper-triangular!\n");
+    } else {
+      printf("\nVERIFIED\n");
     }
 
   lgp_barrier();
