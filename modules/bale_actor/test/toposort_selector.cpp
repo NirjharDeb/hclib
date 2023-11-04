@@ -154,7 +154,7 @@ double toposort_matrix_selector(SHARED int64_t *rperm, SHARED int64_t *cperm, sp
   lgp_barrier();
 
   double t1 = wall_seconds();
-  hclib::finish([=, &rownext, &rowlast, &colnext, &collast, &colstart, &colend]() {
+  /**hclib::finish([=, &rownext, &rowlast, &colnext, &collast, &colstart, &colend]() {
     topo->start();
     pkg_topo_t pkg;
     int64_t r_and_c_done = 0;
@@ -194,7 +194,61 @@ double toposort_matrix_selector(SHARED int64_t *rperm, SHARED int64_t *cperm, sp
       hclib::yield();
     }
     topo->done(0);
-  });
+  });**/
+
+  //No yield version
+  topo->start();
+  pkg_topo_t pkg;
+  int64_t r_and_c_done = 0;
+  int64_t col_level, row, pe, curr_col;
+
+  while (r_and_c_done != (lnr + lnc)) {
+    //Wrapped row while loop in a finish
+    hclib::finish([=, &rownext, &pkg, &lrowqueue, &row, &pe, &r_and_c_done]() {
+      //Debugging statements
+      printf("\nStart finish");
+      if (rownext >= rowlast) {
+        printf("\nFinish cannot start since row_next >= rowlast");
+        printf("\nrownext = %i, rowlast = %i",rownext, rowlast);
+      }
+
+      while (rownext < rowlast) {
+        row = pkg.row = lrowqueue[rownext];
+        pkg.row |= type_mask;
+        pkg.col = lrowsum[row];
+        pkg.level = level[row];
+        matched_col[row] = pkg.col;
+        pe = pkg.col % THREADS;
+        topo->send(0, pkg, pe);
+        r_and_c_done++;
+        printf("\nMid-row: r_and_c_done: %i", r_and_c_done);
+        rownext++;
+      }
+    });
+
+    printf("\nMid-way: r_and_c_done: %i", r_and_c_done);
+    
+    while (colnext <= collast) {
+      if (colstart == colend) {
+        if (colnext == collast) { break; }
+        curr_col = lcolqueue[colnext];
+        col_level = lcolqueue_level[colnext++];
+        colstart = tmat->loffset[curr_col];
+        colend = tmat->loffset[curr_col + 1];
+      }
+      row = tmat->lnonzero[colstart];
+      pkg.row = row/THREADS;
+      pkg.col = curr_col*THREADS + MYTHREAD;
+      pkg.level = col_level;
+      pe = row % THREADS;
+      topo->send(0, pkg, pe);
+      colstart++;
+      if (colstart == colend)
+        r_and_c_done++;
+    }
+  }
+  topo->done(0);
+  
 
   num_levels = topo->getNumLevels();
   delete topo;
