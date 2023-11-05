@@ -196,7 +196,7 @@ double toposort_matrix_selector(SHARED int64_t *rperm, SHARED int64_t *cperm, sp
     topo->done(0);
   });**/
 
-  //No yield version
+  //No yield, one finish approach
   topo->start();
   pkg_topo_t pkg;
   int64_t r_and_c_done = 0;
@@ -204,13 +204,13 @@ double toposort_matrix_selector(SHARED int64_t *rperm, SHARED int64_t *cperm, sp
 
   while (r_and_c_done != (lnr + lnc)) {
     //Wrapped row while loop in a finish
-    hclib::finish([=, &rownext, &pkg, &lrowqueue, &row, &pe, &r_and_c_done]() {
+    hclib::finish([=, &rownext, &pkg, &lrowqueue, &row, &pe, &r_and_c_done, &colnext, &curr_col, &col_level, &colstart, &colend]() {
       //Debugging statements
-      printf("\nStart finish");
+      printf("\nStart row loop");
       if (rownext >= rowlast) {
-        printf("\nFinish cannot start since row_next >= rowlast");
-        printf("\nrownext = %i, rowlast = %i",rownext, rowlast);
+        printf("\nRow loop cannot start since row_next >= rowlast");
       }
+      printf("\nrownext = %li, rowlast = %li",rownext, rowlast);
 
       while (rownext < rowlast) {
         row = pkg.row = lrowqueue[rownext];
@@ -221,33 +221,42 @@ double toposort_matrix_selector(SHARED int64_t *rperm, SHARED int64_t *cperm, sp
         pe = pkg.col % THREADS;
         topo->send(0, pkg, pe);
         r_and_c_done++;
-        printf("\nMid-row: r_and_c_done: %i", r_and_c_done);
         rownext++;
+        printf("\nMid-row: r_and_c_done: %li", r_and_c_done);
+      }
+
+      printf("\nMid-way: r_and_c_done: %li", r_and_c_done);
+
+      //Debugging statements
+      printf("\nStart col loop");
+      if (colnext > collast) {
+        printf("\nCol loop cannot start since colnext > collast");
+      }
+      printf("\ncolnext = %li, collast = %li",colnext, collast);
+
+      while (colnext <= collast) {
+        if (colstart == colend) {
+          if (colnext == collast) { break; }
+          curr_col = lcolqueue[colnext];
+          col_level = lcolqueue_level[colnext++];
+          colstart = tmat->loffset[curr_col];
+          colend = tmat->loffset[curr_col + 1];
+        }
+        row = tmat->lnonzero[colstart];
+        pkg.row = row/THREADS;
+        pkg.col = curr_col*THREADS + MYTHREAD;
+        pkg.level = col_level;
+        pe = row % THREADS;
+        topo->send(0, pkg, pe);
+        colstart++;
+        if (colstart == colend)
+          r_and_c_done++;
+        printf("\nMid-col: r_and_c_done: %li", r_and_c_done);
       }
     });
-
-    printf("\nMid-way: r_and_c_done: %i", r_and_c_done);
-    
-    while (colnext <= collast) {
-      if (colstart == colend) {
-        if (colnext == collast) { break; }
-        curr_col = lcolqueue[colnext];
-        col_level = lcolqueue_level[colnext++];
-        colstart = tmat->loffset[curr_col];
-        colend = tmat->loffset[curr_col + 1];
-      }
-      row = tmat->lnonzero[colstart];
-      pkg.row = row/THREADS;
-      pkg.col = curr_col*THREADS + MYTHREAD;
-      pkg.level = col_level;
-      pe = row % THREADS;
-      topo->send(0, pkg, pe);
-      colstart++;
-      if (colstart == colend)
-        r_and_c_done++;
-    }
   }
   topo->done(0);
+
   
 
   num_levels = topo->getNumLevels();
