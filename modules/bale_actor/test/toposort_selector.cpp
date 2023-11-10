@@ -112,6 +112,7 @@ class TopoSort: public hclib::Selector<1, pkg_topo_t> {
   }
 
   void process1(pkg_topo_t pkg_ptr, int sender_rank) {
+    printf("mailbox 1");
     if (!(pkg_ptr.row & type_mask)) {
       lrowsum[pkg_ptr.row] -= pkg_ptr.col;
       lrowcnt[pkg_ptr.row]--;
