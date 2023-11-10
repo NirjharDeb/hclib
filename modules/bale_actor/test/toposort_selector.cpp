@@ -103,12 +103,16 @@ class TopoSort: public hclib::Selector<1, pkg_topo_t> {
         pkg_ptr.col = curr_col*THREADS + MYTHREAD;
         pkg_ptr.level = col_level;
         pe = row % THREADS;
-        this->send(0, pkg_ptr, pe);
+        send(1, pkg_ptr, pe);
         colstart++;
         if (colstart == colend)
           pkg_ptr.r_and_c_done++;
       }
-    } else {
+    }
+  }
+
+  void process1(pkg_topo_t pkg_ptr, int sender_rank) {
+    if (!(pkg_ptr.row & type_mask)) {
       lrowsum[pkg_ptr.row] -= pkg_ptr.col;
       lrowcnt[pkg_ptr.row]--;
       /* update the level for this row */
@@ -126,6 +130,7 @@ class TopoSort: public hclib::Selector<1, pkg_topo_t> {
 public:
   TopoSort(sparsemat_t *tmat, int64_t *lrowqueue, int64_t *lrowsum, int64_t *lcolqueue, int64_t *lcolqueue_level, int64_t *lrowcnt, int64_t *level, int64_t *matched_col, int64_t *rowlast, int64_t *collast): tmat(tmat), lrowqueue(lrowqueue), lrowsum(lrowsum), lcolqueue(lcolqueue), lcolqueue_level(lcolqueue_level), lrowcnt(lrowcnt), level(level), matched_col(matched_col), rowlast(rowlast), collast(collast) {
     mb[0].process = [this](pkg_topo_t pkg, int sender_rank) { this->process0(pkg, sender_rank); };
+    mb[1].process = [this](pkg_topo_t pkg, int sender_rank) { this->process1(pkg, sender_rank); };
   }
   int64_t getNumLevels() { return num_levels; }
 };
@@ -140,6 +145,7 @@ class TopoSortCPerm: public hclib::Selector<1, pkg_cperm_t> {
 public:
   TopoSortCPerm(int64_t *lcperm) : lcperm(lcperm) {
     mb[0].process = [this](pkg_cperm_t pkg, int sender_rank) { this->process(pkg, sender_rank); };
+    mb[1].process = [this](pkg_cperm_t pkg, int sender_rank) { this->process(pkg, sender_rank); };
   }
 };
 
