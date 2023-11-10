@@ -58,7 +58,7 @@ typedef struct pkg_cperm_t {
   int64_t col;
 } pkg_cperm_t;
 
-class TopoSort: public hclib::Selector<1, pkg_topo_t> {
+class TopoSort: public hclib::Selector<2, pkg_topo_t> {
   sparsemat_t *tmat;
   int64_t *lrowqueue;
   int64_t *lrowsum;
