@@ -90,7 +90,7 @@ class TopoSort: public hclib::Selector<2, pkg_topo_t> {
 
       //Integration of column while loop
       while (colnext <= *collast) {
-        printf("COL\n");
+        //printf("COL\n");
         if (colstart == colend) {
           if (colnext == *collast) { break; }
           curr_col = lcolqueue[colnext];
@@ -112,7 +112,7 @@ class TopoSort: public hclib::Selector<2, pkg_topo_t> {
   }
 
   void process1(pkg_topo_t pkg_ptr, int sender_rank) {
-    printf("MAIL 1\n");
+    //printf("MAIL 1\n");
     if (!(pkg_ptr.row & type_mask)) {
       lrowsum[pkg_ptr.row] -= pkg_ptr.col;
       lrowcnt[pkg_ptr.row]--;
@@ -306,7 +306,7 @@ double toposort_matrix_selector(SHARED int64_t *rperm, SHARED int64_t *cperm, sp
     while (topo->r_and_c_done != (lnr + lnc)) {
       //Use the finish wrapper around the row loop (maybe move the finish from above)
       while (rownext < rowlast) {
-        printf("ROW\n");
+        //printf("ROW\n");
         row = pkg.row = lrowqueue[rownext];
         pkg.row |= type_mask;
         pkg.col = lrowsum[row];
