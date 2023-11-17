@@ -50,7 +50,6 @@ typedef struct pkg_topo_t {
   int64_t row;
   int64_t col;
   int64_t level;
-  int64_t r_and_c_done;
 } pkg_topo_t;
 
 typedef struct pkg_cperm_t {
@@ -82,6 +81,7 @@ class TopoSort: public hclib::Selector<2, pkg_topo_t> {
   int64_t colnext;
   int64_t row;
   int64_t pe;
+
    
  void process0(pkg_topo_t pkg_ptr, int sender_rank) {
     if (pkg_ptr.row & type_mask) {
@@ -106,13 +106,13 @@ class TopoSort: public hclib::Selector<2, pkg_topo_t> {
         send(1, pkg_ptr, pe);
         colstart++;
         if (colstart == colend)
-          pkg_ptr.r_and_c_done++;
+          r_and_c_done++;
       }
     }
   }
 
   void process1(pkg_topo_t pkg_ptr, int sender_rank) {
-    printf("mailbox 1");
+    printf("MAIL 1\n");
     if (!(pkg_ptr.row & type_mask)) {
       lrowsum[pkg_ptr.row] -= pkg_ptr.col;
       lrowcnt[pkg_ptr.row]--;
@@ -129,6 +129,8 @@ class TopoSort: public hclib::Selector<2, pkg_topo_t> {
   }
 
 public:
+  int64_t r_and_c_done;
+
   TopoSort(sparsemat_t *tmat, int64_t *lrowqueue, int64_t *lrowsum, int64_t *lcolqueue, int64_t *lcolqueue_level, int64_t *lrowcnt, int64_t *level, int64_t *matched_col, int64_t *rowlast, int64_t *collast): tmat(tmat), lrowqueue(lrowqueue), lrowsum(lrowsum), lcolqueue(lcolqueue), lcolqueue_level(lcolqueue_level), lrowcnt(lrowcnt), level(level), matched_col(matched_col), rowlast(rowlast), collast(collast) {
     mb[0].process = [this](pkg_topo_t pkg, int sender_rank) { this->process0(pkg, sender_rank); };
     mb[1].process = [this](pkg_topo_t pkg, int sender_rank) { this->process1(pkg, sender_rank); };
@@ -301,7 +303,7 @@ double toposort_matrix_selector(SHARED int64_t *rperm, SHARED int64_t *cperm, sp
     pkg_topo_t pkg;
     //int64_t r_and_c_done = 0;
     int64_t col_level, row, pe, curr_col;
-    while (pkg.r_and_c_done != (lnr + lnc)) {
+    while (topo->r_and_c_done != (lnr + lnc)) {
       //Use the finish wrapper around the row loop (maybe move the finish from above)
       while (rownext < rowlast) {
         printf("ROW\n");
@@ -312,10 +314,11 @@ double toposort_matrix_selector(SHARED int64_t *rperm, SHARED int64_t *cperm, sp
         matched_col[row] = pkg.col;
         pe = pkg.col % THREADS;
         topo->send(0, pkg, pe);
-        pkg.r_and_c_done++;
+        topo->r_and_c_done++;
         rownext++;
       }
 
+      //still needs yield to run
       hclib::yield();
     }
     topo->done(0);
