@@ -203,8 +203,6 @@ int64_t* copied_rand_permp_selector(int64_t N, int seed) {
 
                 if(ret)
                     (*iendPtr)++;
-                else
-                    hclib::yield();
 
             }
 
