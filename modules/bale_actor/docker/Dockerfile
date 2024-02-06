@@ -1,4 +1,5 @@
-FROM ubuntu:18.04
+FROM ubuntu:20.04
+ENV DEBIAN_FRONTEND=noninteractive
 LABEL authors="Akihiro Hayashi <ahayashi@gatech.edu>,Sri Raj Paul <sriraj@gatech.edu>"
 
 RUN apt-get update && apt-get install -y \
