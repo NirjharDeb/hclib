@@ -14,7 +14,8 @@ RUN apt-get update && apt-get install -y \
     libmpich-dev \
     mpich \
     unzip \
-    python3.8
+    python3.8 \
+    make
 
 ENV LOCAL=/root/local
 
