@@ -87,6 +87,7 @@ class TopoSort: public hclib::Selector<2, pkg_topo_t> {
  void process0(pkg_topo_t pkg_ptr, int sender_rank) {
     printf("MB0: Reached\n");
     if (pkg_ptr.row & type_mask) {
+      printf("MB0: Inside if-statement\n");
       lcolqueue[*collast] = (pkg_ptr.col)/THREADS;
       lcolqueue_level[(*collast)++] = pkg_ptr.level;
 
@@ -117,8 +118,7 @@ class TopoSort: public hclib::Selector<2, pkg_topo_t> {
   void process1(pkg_topo_t pkg_ptr, int sender_rank) {
     printf("MB1: Reached\n");
     if (!(pkg_ptr.row & type_mask)) {
-      printf("%" PRId64 "\n", pkg_ptr.row);
-      printf("check\n");
+      printf("MB1: Inside if-statement\n");
       lrowsum[pkg_ptr.row] -= pkg_ptr.col;
       lrowcnt[pkg_ptr.row]--;
       /* update the level for this row */
