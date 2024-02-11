@@ -45,6 +45,7 @@ extern "C" {
 }
 #include <std_options.h>
 #include "selector.h"
+#include <assert.h>
 
 typedef struct pkg_topo_t {
   int64_t row;
@@ -84,6 +85,7 @@ class TopoSort: public hclib::Selector<2, pkg_topo_t> {
 
    
  void process0(pkg_topo_t pkg_ptr, int sender_rank) {
+    printf("MB0: Reached\n");
     if (pkg_ptr.row & type_mask) {
       lcolqueue[*collast] = (pkg_ptr.col)/THREADS;
       lcolqueue_level[(*collast)++] = pkg_ptr.level;
@@ -109,11 +111,14 @@ class TopoSort: public hclib::Selector<2, pkg_topo_t> {
           r_and_c_done++;
       }
     }
+    printf("MB0: End\n");
   }
 
   void process1(pkg_topo_t pkg_ptr, int sender_rank) {
-    //printf("MAIL 1\n");
+    printf("MB1: Reached\n");
     if (!(pkg_ptr.row & type_mask)) {
+      printf("%" PRId64 "\n", pkg_ptr.row);
+      printf("check\n");
       lrowsum[pkg_ptr.row] -= pkg_ptr.col;
       lrowcnt[pkg_ptr.row]--;
       /* update the level for this row */
@@ -126,6 +131,7 @@ class TopoSort: public hclib::Selector<2, pkg_topo_t> {
         lrowqueue[(*rowlast)++] = pkg_ptr.row;
       }
     }
+    printf("MB1: End\n");
   }
 
 public:
