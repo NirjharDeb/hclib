@@ -144,7 +144,7 @@ public:
   int64_t getNumLevels() { return num_levels; }
 };
 
-class TopoSortCPerm: public hclib::Selector<1, pkg_cperm_t> {
+class TopoSortCPerm: public hclib::Selector<2, pkg_cperm_t> {
   int64_t *lcperm;  
 
   void process(pkg_cperm_t pkg, int sender_rank) {
