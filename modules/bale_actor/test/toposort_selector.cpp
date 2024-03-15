@@ -108,8 +108,11 @@ class TopoSort: public hclib::Selector<2, pkg_topo_t> {
         pe = row % THREADS;
         send(1, pkg_ptr, pe);
         colstart++;
-        if (colstart == colend)
+        if (colstart == colend) {
           r_and_c_done++;
+          printf("[PE%d] MB0: r_and_c_done: %ld\n", MYTHREAD, r_and_c_done);
+        }
+          
       }
     }
     //printf("MB0: End\n");
@@ -322,6 +325,7 @@ double toposort_matrix_selector(SHARED int64_t *rperm, SHARED int64_t *cperm, sp
         pe = pkg.col % THREADS;
         topo->send(0, pkg, pe);
         topo->r_and_c_done++;
+        printf("[PE%d] MAIN: r_and_c_done: %ld | lnr + lnc: %ld\n", MYTHREAD, topo->r_and_c_done, (lnr + lnc));
         rownext++;
       }
 
