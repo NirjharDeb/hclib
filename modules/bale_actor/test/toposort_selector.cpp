@@ -317,6 +317,7 @@ double toposort_matrix_selector(SHARED int64_t *rperm, SHARED int64_t *cperm, sp
       //Use the finish wrapper around the row loop (maybe move the finish from above)
       while (rownext < rowlast) {
         printf("ROW start\n");
+        fflush(stdout);
         row = pkg.row = lrowqueue[rownext];
         pkg.row |= type_mask;
         pkg.col = lrowsum[row];
@@ -330,6 +331,7 @@ double toposort_matrix_selector(SHARED int64_t *rperm, SHARED int64_t *cperm, sp
         rownext++;
       }
       printf("ROW end\n");
+      fflush(stdout);
       //still needs yield to run
       hclib::yield();
     }
