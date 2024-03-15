@@ -138,7 +138,7 @@ class TopoSort: public hclib::Selector<2, pkg_topo_t> {
   }
 
 public:
-  int64_t r_and_c_done;
+  int64_t r_and_c_done = 0;
 
   TopoSort(sparsemat_t *tmat, int64_t *lrowqueue, int64_t *lrowsum, int64_t *lcolqueue, int64_t *lcolqueue_level, int64_t *lrowcnt, int64_t *level, int64_t *matched_col, int64_t *rowlast, int64_t *collast): tmat(tmat), lrowqueue(lrowqueue), lrowsum(lrowsum), lcolqueue(lcolqueue), lcolqueue_level(lcolqueue_level), lrowcnt(lrowcnt), level(level), matched_col(matched_col), rowlast(rowlast), collast(collast) {
     mb[0].process = [this](pkg_topo_t pkg, int sender_rank) { this->process0(pkg, sender_rank); };
