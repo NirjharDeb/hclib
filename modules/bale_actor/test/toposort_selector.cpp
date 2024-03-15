@@ -312,7 +312,7 @@ double toposort_matrix_selector(SHARED int64_t *rperm, SHARED int64_t *cperm, sp
     topo->start();
     pkg_topo_t pkg;
     //int64_t r_and_c_done = 0;
-    int64_t col_level, row, pe, curr_col;
+    int64_t row, pe;
     while (topo->r_and_c_done != (lnr + lnc)) {
       //Use the finish wrapper around the row loop (maybe move the finish from above)
       while (rownext < rowlast) {
@@ -323,6 +323,7 @@ double toposort_matrix_selector(SHARED int64_t *rperm, SHARED int64_t *cperm, sp
         pkg.level = level[row];
         matched_col[row] = pkg.col;
         pe = pkg.col % THREADS;
+        printf("[PE%d] MAIN - send message to pe: %ld \n", MYTHREAD, pe);
         topo->send(0, pkg, pe);
         topo->r_and_c_done++;
         printf("[PE%d] MAIN: r_and_c_done: %ld | lnr + lnc: %ld\n", MYTHREAD, topo->r_and_c_done, (lnr + lnc));
