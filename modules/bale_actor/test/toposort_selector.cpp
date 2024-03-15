@@ -159,7 +159,7 @@ public:
 };
 
 double toposort_matrix_selector(SHARED int64_t *rperm, SHARED int64_t *cperm, sparsemat_t *mat, sparsemat_t *tmat) {
-  //T0_printf("Running Toposort with conveyors ...");
+  printf("[PE%d] Running Toposort with conveyors ...\n", MYTHREAD);
   int64_t nr = mat->numrows;
   int64_t nc = mat->numcols;
   int64_t lnr = (nr + THREADS - MYTHREAD - 1)/THREADS;
@@ -195,6 +195,7 @@ double toposort_matrix_selector(SHARED int64_t *rperm, SHARED int64_t *cperm, sp
   }
 
   int64_t num_levels = 0;  
+  printf("[PE%d] Will create topo\n", MYTHREAD);
   TopoSort *topo = new TopoSort(tmat, lrowqueue, lrowsum, lcolqueue, lcolqueue_level, lrowcnt, level, matched_col, &rowlast, &collast);
 
   lgp_barrier();
@@ -330,6 +331,7 @@ double toposort_matrix_selector(SHARED int64_t *rperm, SHARED int64_t *cperm, sp
     topo->done(0);
   });
   
+  printf("[PE%d] Done with finish statement\n", MYTHREAD);
 
   num_levels = topo->getNumLevels();
   delete topo;
@@ -358,7 +360,7 @@ double toposort_matrix_selector(SHARED int64_t *rperm, SHARED int64_t *cperm, sp
   for(int i = 0; i < lnr; i++){
     lrperm[i] = (nr - 1) - level_start[level[i]]++;
   }
-
+  printf("[PE%d] Will create topocperm\n", MYTHREAD);
   TopoSortCPerm *topocperm = new TopoSortCPerm(lcperm);
   hclib::finish([=]() {
     topocperm->start();
@@ -371,6 +373,7 @@ double toposort_matrix_selector(SHARED int64_t *rperm, SHARED int64_t *cperm, sp
     }
     topocperm->done(0);
   });
+  printf("[PE%d] Reached end of second finish\n", MYTHREAD);
   delete topocperm;
   lgp_barrier();  
   
