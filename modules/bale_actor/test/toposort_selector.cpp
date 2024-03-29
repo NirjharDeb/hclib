@@ -120,6 +120,7 @@ class TopoSort: public hclib::Selector<2, pkg_topo_t> {
 
   void process1(pkg_topo_t pkg_ptr, int sender_rank) {
     //printf("MB1: Reached\n");
+    //see if rowlast is updated correctly here
     if (!(pkg_ptr.row & type_mask)) {
       //printf("MB1: Inside if-statement\n");
       lrowsum[pkg_ptr.row] -= pkg_ptr.col;
@@ -204,109 +205,6 @@ double toposort_matrix_selector(SHARED int64_t *rperm, SHARED int64_t *cperm, sp
   lgp_barrier();
 
   double t1 = wall_seconds();
-  /**hclib::finish([=, &rownext, &rowlast, &colnext, &collast, &colstart, &colend]() {
-    topo->start();
-    pkg_topo_t pkg;
-    int64_t r_and_c_done = 0;
-    int64_t col_level, row, pe, curr_col;
-    while (r_and_c_done != (lnr + lnc)) {
-      //Use the finish wrapper around the row loop (maybe move the finish from above)
-      while (rownext < rowlast) {
-        row = pkg.row = lrowqueue[rownext];
-        pkg.row |= type_mask;
-        pkg.col = lrowsum[row];
-        pkg.level = level[row];
-        matched_col[row] = pkg.col;
-        pe = pkg.col % THREADS;
-        topo->send(0, pkg, pe);
-        r_and_c_done++;
-        rownext++;
-      }
-
-      while (colnext <= collast) {
-        if (colstart == colend) {
-          if (colnext == collast) { break; }
-          curr_col = lcolqueue[colnext];
-          col_level = lcolqueue_level[colnext++];
-          colstart = tmat->loffset[curr_col];
-          colend = tmat->loffset[curr_col + 1];
-        }
-        row = tmat->lnonzero[colstart];
-        pkg.row = row/THREADS;
-        pkg.col = curr_col*THREADS + MYTHREAD;
-        pkg.level = col_level;
-        pe = row % THREADS;
-        topo->send(0, pkg, pe);
-        colstart++;
-        if (colstart == colend)
-          r_and_c_done++;
-      }
-      hclib::yield();
-    }
-    topo->done(0);
-  });**/
-
-  //No yield, one finish approach
-  /**topo->start();
-  pkg_topo_t pkg;
-  int64_t r_and_c_done = 0;
-  int64_t col_level, row, pe, curr_col;
-
-  while (r_and_c_done != (lnr + lnc)) {
-    //Wrapped row while loop in a finish
-    hclib::finish([=, &rownext, &pkg, &lrowqueue, &row, &pe, &r_and_c_done, &colnext, &curr_col, &col_level, &colstart, &colend]() {
-      //Debugging statements
-      printf("\nStart row loop");
-      if (rownext >= rowlast) {
-        printf("\nRow loop cannot start since row_next >= rowlast");
-      }
-      printf("\nrownext = %li, rowlast = %li",rownext, rowlast);
-
-      while (rownext < rowlast) {
-        row = pkg.row = lrowqueue[rownext];
-        pkg.row |= type_mask;
-        pkg.col = lrowsum[row];
-        pkg.level = level[row];
-        matched_col[row] = pkg.col;
-        pe = pkg.col % THREADS;
-        topo->send(0, pkg, pe);
-        r_and_c_done++;
-        rownext++;
-        printf("\nMid-row: r_and_c_done: %li", r_and_c_done);
-      }
-
-      printf("\nMid-way: r_and_c_done: %li", r_and_c_done);
-
-      //Debugging statements
-      printf("\nStart col loop");
-      if (colnext > collast) {
-        printf("\nCol loop cannot start since colnext > collast");
-      }
-      printf("\ncolnext = %li, collast = %li",colnext, collast);
-
-      while (colnext <= collast) {
-        if (colstart == colend) {
-          if (colnext == collast) { break; }
-          curr_col = lcolqueue[colnext];
-          col_level = lcolqueue_level[colnext++];
-          colstart = tmat->loffset[curr_col];
-          colend = tmat->loffset[curr_col + 1];
-        }
-        row = tmat->lnonzero[colstart];
-        pkg.row = row/THREADS;
-        pkg.col = curr_col*THREADS + MYTHREAD;
-        pkg.level = col_level;
-        pe = row % THREADS;
-        topo->send(0, pkg, pe);
-        colstart++;
-        if (colstart == colend)
-          r_and_c_done++;
-        printf("\nMid-col: r_and_c_done: %li", r_and_c_done);
-      }
-    });
-  }
-  topo->done(0);**/
-
   //Wrap column loop in process0 approach
   hclib::finish([=, &rownext, &rowlast, &colnext, &collast, &colstart, &colend]() {
     topo->start();
@@ -315,9 +213,9 @@ double toposort_matrix_selector(SHARED int64_t *rperm, SHARED int64_t *cperm, sp
     int64_t row, pe;
     while (topo->r_and_c_done != (lnr + lnc)) {
       //Use the finish wrapper around the row loop (maybe move the finish from above)
+      
+      //check if rowlast updated inside the message handler (use GDB)
       while (rownext < rowlast) {
-        printf("ROW start\n");
-        fflush(stdout);
         row = pkg.row = lrowqueue[rownext];
         pkg.row |= type_mask;
         pkg.col = lrowsum[row];
@@ -330,8 +228,6 @@ double toposort_matrix_selector(SHARED int64_t *rperm, SHARED int64_t *cperm, sp
         printf("[PE%d] MAIN: r_and_c_done: %ld | lnr + lnc: %ld\n", MYTHREAD, topo->r_and_c_done, (lnr + lnc));
         rownext++;
       }
-      printf("ROW end\n");
-      fflush(stdout);
       //still needs yield to run
       hclib::yield();
     }

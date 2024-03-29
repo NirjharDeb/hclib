@@ -5,3 +5,4 @@ configure
 autom4te.cache
 Makefile.in
 aclocal.m4
+modules/bale_actor/test/toposort_selector
