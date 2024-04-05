@@ -126,7 +126,7 @@ class TopoSort: public hclib::Selector<2, pkg_topo_t> {
       //printf("MB0: Inside if-statement\n");
       lcolqueue[*collast] = (pkg_ptr.col)/THREADS;
       lcolqueue_level[(*collast)++] = pkg_ptr.level;
-      outVariableToNewFile("collast", *collast, __LINE__);
+      //outVariableToNewFile("collast", *collast, __LINE__);
 
       //Integration of column while loop
       while (colnext <= *collast) {
@@ -171,6 +171,7 @@ class TopoSort: public hclib::Selector<2, pkg_topo_t> {
       }
       if(lrowcnt[pkg_ptr.row] == 1){
         lrowqueue[(*rowlast)++] = pkg_ptr.row;
+        outVariableToNewFile("rowlast", *rowlast, __LINE__);
       }
     }
     //printf("MB1: End\n");
@@ -230,6 +231,7 @@ double toposort_matrix_selector(SHARED int64_t *rperm, SHARED int64_t *cperm, sp
     lrowcnt[i] = mat->loffset[i+1] - mat->loffset[i];
     if(lrowcnt[i] == 1){
       lrowqueue[rowlast++] = i;
+      outVariableToNewFile("rowlast", rowlast, __LINE__);
       level[i] = 0;
     }
     for(int j = mat->loffset[i]; j < mat->loffset[i+1]; j++)
