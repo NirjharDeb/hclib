@@ -56,11 +56,11 @@ using namespace std;
 
 // Print out value of variable to a new file titled "variable_name.txt" in toposort_outputs folder
 void outVariableToNewFile(string name, int64_t value, int pe) {
-  string file_name = "toposort_outputs/" + name + ".txt";
+  string file_name = "toposort_outputs/" + name + "[" + to_string(pe) + "]" + ".txt";
   ofstream output_file(file_name, ios::app);
 
   if (output_file.is_open()) {
-    string new_line = "PE[" + to_string(pe) + "] " + to_string(value);
+    string new_line = "PE[" + to_string(pe) + "] [" + name + "] " + to_string(value);
     output_file << new_line << endl;
     output_file.close();
   } else {
@@ -251,13 +251,15 @@ double toposort_matrix_selector(SHARED int64_t *rperm, SHARED int64_t *cperm, sp
     topo->start();
     pkg_topo_t pkg;
     //int64_t r_and_c_done = 0;
-    int64_t row, pe;
+    int64_t row = 0;
+    int64_t pe = 0;
     outVariableToNewFile("row", row, pe);
     while (topo->r_and_c_done != (lnr + lnc)) {
       //Use the finish wrapper around the row loop (maybe move the finish from above)
       
       //check if rowlast updated inside the message handler (use GDB)
       while (rownext < rowlast) {
+        outVariableToNewFile("rownext", rownext, pe);
         row = pkg.row = lrowqueue[rownext];
         outVariableToNewFile("row", row, pe);
         pkg.row |= type_mask;
