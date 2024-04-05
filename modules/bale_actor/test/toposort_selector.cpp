@@ -47,6 +47,9 @@ extern "C" {
 #include "selector.h"
 #include <assert.h>
 
+#define THREADS shmem_n_pes()
+#define MYTHREAD shmem_my_pe()
+
 //Printing to a new file (DEBUGGING)
 #include <fstream>
 #include <iostream>
@@ -55,12 +58,14 @@ extern "C" {
 using namespace std;
 
 // Print out value of variable to a new file titled "variable_name.txt" in toposort_outputs folder
-void outVariableToNewFile(string name, int64_t value, int pe) {
+void outVariableToNewFile(string name, int64_t value, int lineNumber) {
+  int pe = MYTHREAD;
+
   string file_name = "toposort_outputs/" + name + "[" + to_string(pe) + "]" + ".txt";
   ofstream output_file(file_name, ios::app);
 
   if (output_file.is_open()) {
-    string new_line = "PE[" + to_string(pe) + "] [" + name + "] " + to_string(value);
+    string new_line = "PE[" + to_string(pe) + "] [" + name + "][" + to_string(lineNumber) + "] " + to_string(value);
     output_file << new_line << endl;
     output_file.close();
   } else {
@@ -140,7 +145,8 @@ class TopoSort: public hclib::Selector<2, pkg_topo_t> {
         colstart++;
         if (colstart == colend) {
           r_and_c_done++;
-          printf("[PE%d] MB0: r_and_c_done: %ld\n", MYTHREAD, r_and_c_done);
+          outVariableToNewFile("topo->r_and_c_done", r_and_c_done, __LINE__);
+          //printf("[PE%d] MB0: r_and_c_done: %ld\n", MYTHREAD, r_and_c_done);
         }
           
       }
@@ -253,24 +259,23 @@ double toposort_matrix_selector(SHARED int64_t *rperm, SHARED int64_t *cperm, sp
     //int64_t r_and_c_done = 0;
     int64_t row = 0;
     int64_t pe = 0;
-    outVariableToNewFile("row", row, pe);
     while (topo->r_and_c_done != (lnr + lnc)) {
       //Use the finish wrapper around the row loop (maybe move the finish from above)
-      
+      outVariableToNewFile("topo->r_and_c_done", topo->r_and_c_done, __LINE__);
+
       //check if rowlast updated inside the message handler (use GDB)
       while (rownext < rowlast) {
-        outVariableToNewFile("rownext", rownext, pe);
         row = pkg.row = lrowqueue[rownext];
-        outVariableToNewFile("row", row, pe);
         pkg.row |= type_mask;
         pkg.col = lrowsum[row];
         pkg.level = level[row];
         matched_col[row] = pkg.col;
         pe = pkg.col % THREADS;
-        printf("[PE%d] MAIN - send message to pe: %ld \n", MYTHREAD, pe);
+        //printf("[PE%d] MAIN - send message to pe: %ld \n", MYTHREAD, pe);
         topo->send(0, pkg, pe);
         topo->r_and_c_done++;
-        printf("[PE%d] MAIN: r_and_c_done: %ld | lnr + lnc: %ld\n", MYTHREAD, topo->r_and_c_done, (lnr + lnc));
+        outVariableToNewFile("topo->r_and_c_done", topo->r_and_c_done, __LINE__);
+        //printf("[PE%d] MAIN: r_and_c_done: %ld | lnr + lnc: %ld\n", MYTHREAD, topo->r_and_c_done, (lnr + lnc));
         rownext++;
       }
       //still needs yield to run
