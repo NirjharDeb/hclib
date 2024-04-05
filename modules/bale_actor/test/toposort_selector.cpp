@@ -73,15 +73,18 @@ void resetFolder(string folder_name) {
 
 // Print out value of variable to a new file titled "variable_name.txt" in toposort_outputs folder
 void outVariableToNewFile(string name, int64_t value, int lineNumber) {
-  static unsigned int call_count = 0;
-  call_count++;
   int pe = MYTHREAD;
 
-  string file_name = "toposort_outputs_" + to_string(pe) + "/" + name + "[" + to_string(pe) + "]" + ".txt";
+  //Track number of times this method has been called across all PEs
+  static unsigned int call_count = 0;
+  call_count++;
 
-  if (call_count == 1) {
-    resetFolder("toposort_outputs_" + to_string(pe));
+  //If PE is 0 and this is the first call to method, reset the toposort_outputs folder
+  if (call_count == 1 && pe == 0) {
+    resetFolder("toposort_outputs");
   }
+
+  string file_name = "toposort_outputs/" + name + "[" + to_string(pe) + "]" + ".txt";
 
   ofstream output_file(file_name, ios::app);
 
@@ -90,7 +93,7 @@ void outVariableToNewFile(string name, int64_t value, int lineNumber) {
     output_file << new_line << endl;
     output_file.close();
   } else {
-    printf("Failed to write to output file\n");
+    printf(("Failed to write " + name + " to output file.\n").c_str());
   }
 }
 
