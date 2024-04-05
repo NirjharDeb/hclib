@@ -47,26 +47,25 @@ extern "C" {
 #include "selector.h"
 #include <assert.h>
 
-//Printing to a new file
+//Printing to a new file (DEBUGGING)
 #include <fstream>
 #include <iostream>
+#include <string>
 
 using namespace std;
 
-// method to print out variable
-void outVariableToNewFile() {
-  printf("Will create output file.\n");
-  ofstream outputFile("output.txt");
+// Print out value of variable to a new file titled "variable_name.txt" in toposort_outputs folder
+void outVariableToNewFile(string name, int64_t value, int pe) {
+  string file_name = "toposort_outputs/" + name + ".txt";
+  ofstream output_file(file_name, ios::app);
 
-  if (outputFile.is_open()) { // check if the file was opened successfully
-    outputFile << "This is an output file test!\n"; // write data to the file
-    outputFile.close(); // close the file when done
-    printf("Data was written to output.txt\n");
-  }
-  else {
+  if (output_file.is_open()) {
+    string new_line = "PE[" + to_string(pe) + "] " + to_string(value);
+    output_file << new_line << endl;
+    output_file.close();
+  } else {
     printf("Failed to write to output file\n");
   }
-
 }
 
 typedef struct pkg_topo_t {
@@ -247,19 +246,21 @@ double toposort_matrix_selector(SHARED int64_t *rperm, SHARED int64_t *cperm, sp
   */
   write_matrix_mm(mat, "Before");
 
-  outVariableToNewFile();
+  
 
   hclib::finish([=, &rownext, &rowlast, &colnext, &collast, &colstart, &colend]() {
     topo->start();
     pkg_topo_t pkg;
     //int64_t r_and_c_done = 0;
     int64_t row, pe;
+    outVariableToNewFile("row", row, pe);
     while (topo->r_and_c_done != (lnr + lnc)) {
       //Use the finish wrapper around the row loop (maybe move the finish from above)
       
       //check if rowlast updated inside the message handler (use GDB)
       while (rownext < rowlast) {
         row = pkg.row = lrowqueue[rownext];
+        outVariableToNewFile("row", row, pe);
         pkg.row |= type_mask;
         pkg.col = lrowsum[row];
         pkg.level = level[row];
