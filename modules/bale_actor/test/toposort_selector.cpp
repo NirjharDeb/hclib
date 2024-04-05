@@ -122,6 +122,7 @@ class TopoSort: public hclib::Selector<2, pkg_topo_t> {
  void process0(pkg_topo_t pkg_ptr, int sender_rank) {
     //printf("MB0: Reached\n");
     if (pkg_ptr.row & type_mask) {
+      outVariableToNewFile("pkg.row", pkg_ptr.row, __LINE__);
       //printf("MB0: Inside if-statement\n");
       lcolqueue[*collast] = (pkg_ptr.col)/THREADS;
       lcolqueue_level[(*collast)++] = pkg_ptr.level;
@@ -266,7 +267,9 @@ double toposort_matrix_selector(SHARED int64_t *rperm, SHARED int64_t *cperm, sp
       //check if rowlast updated inside the message handler (use GDB)
       while (rownext < rowlast) {
         row = pkg.row = lrowqueue[rownext];
+        outVariableToNewFile("pkg.row", pkg.row, __LINE__);
         pkg.row |= type_mask;
+        //outVariableToNewFile("pkg.row", pkg.row, __LINE__);
         pkg.col = lrowsum[row];
         pkg.level = level[row];
         matched_col[row] = pkg.col;
