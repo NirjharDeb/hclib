@@ -47,6 +47,28 @@ extern "C" {
 #include "selector.h"
 #include <assert.h>
 
+//Printing to a new file
+#include <fstream>
+#include <iostream>
+
+using namespace std;
+
+// method to print out variable
+void outVariableToNewFile() {
+  printf("Will create output file.\n");
+  ofstream outputFile("output.txt");
+
+  if (outputFile.is_open()) { // check if the file was opened successfully
+    outputFile << "This is an output file test!\n"; // write data to the file
+    outputFile.close(); // close the file when done
+    printf("Data was written to output.txt\n");
+  }
+  else {
+    printf("Failed to write to output file\n");
+  }
+
+}
+
 typedef struct pkg_topo_t {
   int64_t row;
   int64_t col;
@@ -83,7 +105,16 @@ class TopoSort: public hclib::Selector<2, pkg_topo_t> {
   int64_t row;
   int64_t pe;
 
-   
+   /**
+    * Make some methods to print out the different shared variables.
+    * In both original version and my version of toposort, check if print outs match because
+    * matrix is the same.
+    * 
+    * 
+    * Trace out the algorithm to see how I get from an input matrix to the permutation table.
+   */
+
+
  void process0(pkg_topo_t pkg_ptr, int sender_rank) {
     //printf("MB0: Reached\n");
     if (pkg_ptr.row & type_mask) {
@@ -206,6 +237,18 @@ double toposort_matrix_selector(SHARED int64_t *rperm, SHARED int64_t *cperm, sp
 
   double t1 = wall_seconds();
   //Wrap column loop in process0 approach
+
+  //Print the matrix before
+  /**
+   * Print out explanation:
+   * First row of print out has dimensions (row by column) and number of non-zero values
+   * Subsequent rows have the row,col coordinates of each non-zero value
+   * The rows and columns are one-indexed
+  */
+  write_matrix_mm(mat, "Before");
+
+  outVariableToNewFile();
+
   hclib::finish([=, &rownext, &rowlast, &colnext, &collast, &colstart, &colend]() {
     topo->start();
     pkg_topo_t pkg;
