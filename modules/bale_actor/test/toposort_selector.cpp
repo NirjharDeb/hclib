@@ -59,9 +59,7 @@ using namespace std;
 
 #include <bits/stdc++.h>
 
-
-bool firstVariablePrintOut = false;
-
+// Delete a folder (if it exists) and recreate it
 void resetFolder(string folder_name) {
   int folderRemoval = system(("rm -rf " + folder_name).c_str());
   if (folderRemoval) {
@@ -75,12 +73,13 @@ void resetFolder(string folder_name) {
 
 // Print out value of variable to a new file titled "variable_name.txt" in toposort_outputs folder
 void outVariableToNewFile(string name, int64_t value, int lineNumber) {
+  static unsigned int call_count = 0;
+  call_count++;
   int pe = MYTHREAD;
 
   string file_name = "toposort_outputs/" + name + "[" + to_string(pe) + "]" + ".txt";
 
-  if (!firstVariablePrintOut) {
-    firstVariablePrintOut = true;
+  if (call_count == 1) {
     resetFolder("toposort_outputs");
   }
 
