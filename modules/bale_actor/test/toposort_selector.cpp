@@ -77,10 +77,10 @@ void outVariableToNewFile(string name, int64_t value, int lineNumber) {
   call_count++;
   int pe = MYTHREAD;
 
-  string file_name = "toposort_outputs/" + name + "[" + to_string(pe) + "]" + ".txt";
+  string file_name = "toposort_outputs_" + to_string(pe) + "/" + name + "[" + to_string(pe) + "]" + ".txt";
 
   if (call_count == 1) {
-    resetFolder("toposort_outputs");
+    resetFolder("toposort_outputs_" + to_string(pe));
   }
 
   ofstream output_file(file_name, ios::app);
