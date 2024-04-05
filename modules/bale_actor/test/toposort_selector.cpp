@@ -57,11 +57,33 @@ extern "C" {
 
 using namespace std;
 
+#include <bits/stdc++.h>
+
+
+bool firstVariablePrintOut = false;
+
+void resetFolder(string folder_name) {
+  int folderRemoval = system(("rm -rf " + folder_name).c_str());
+  if (folderRemoval) {
+    printf("Failed to delete folder.\n");
+  }
+  int folderCreation = system(("mkdir " + folder_name).c_str());
+  if (folderCreation) {
+    printf("Failed to create folder.\n");
+  }
+}
+
 // Print out value of variable to a new file titled "variable_name.txt" in toposort_outputs folder
 void outVariableToNewFile(string name, int64_t value, int lineNumber) {
   int pe = MYTHREAD;
 
   string file_name = "toposort_outputs/" + name + "[" + to_string(pe) + "]" + ".txt";
+
+  if (!firstVariablePrintOut) {
+    firstVariablePrintOut = true;
+    resetFolder("toposort_outputs");
+  }
+
   ofstream output_file(file_name, ios::app);
 
   if (output_file.is_open()) {
