@@ -244,8 +244,7 @@ double toposort_matrix_selector(SHARED int64_t *rperm, SHARED int64_t *cperm, sp
    * Subsequent rows have the row,col coordinates of each non-zero value
    * The rows and columns are one-indexed
   */
-  write_matrix_mm(mat, "Before");
-
+  //write_matrix_mm(mat, "Before");
   
 
   hclib::finish([=, &rownext, &rowlast, &colnext, &collast, &colstart, &colend]() {
