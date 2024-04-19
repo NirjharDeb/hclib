@@ -150,7 +150,7 @@ class TopoSort: public hclib::Selector<2, pkg_topo_t> {
       //printf("MB0: Inside if-statement\n");
       lcolqueue[*collast] = (pkg_ptr.col)/THREADS;
       lcolqueue_level[(*collast)++] = pkg_ptr.level;
-      //outVariableToNewFile("collast", *collast, __LINE__);
+      outVariableToNewFile("collast", *collast, __LINE__);
 
       //Integration of column while loop
       while (colnext <= *collast) {
