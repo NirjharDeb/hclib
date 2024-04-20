@@ -144,17 +144,14 @@ class TopoSort: public hclib::Selector<2, pkg_topo_t> {
 
 
  void process0(pkg_topo_t pkg_ptr, int sender_rank) {
-    //printf("MB0: Reached\n");
     if (pkg_ptr.row & type_mask) {
-      //outVariableToNewFile("pkg.row", pkg_ptr.row, __LINE__);
-      //printf("MB0: Inside if-statement\n");
+      outVariableToNewFile("pkg.row", pkg_ptr.row, __LINE__);
       lcolqueue[*collast] = (pkg_ptr.col)/THREADS;
       lcolqueue_level[(*collast)++] = pkg_ptr.level;
       outVariableToNewFile("collast", *collast, __LINE__);
 
       //Integration of column while loop
       while (colnext <= *collast) {
-        //printf("COL\n");
         if (colstart == colend) {
           if (colnext == *collast) { break; }
           curr_col = lcolqueue[colnext];
@@ -171,20 +168,16 @@ class TopoSort: public hclib::Selector<2, pkg_topo_t> {
         colstart++;
         if (colstart == colend) {
           r_and_c_done++;
-          //outVariableToNewFile("topo->r_and_c_done", r_and_c_done, __LINE__);
-          //printf("[PE%d] MB0: r_and_c_done: %ld\n", MYTHREAD, r_and_c_done);
+          outVariableToNewFile("topo->r_and_c_done", r_and_c_done, __LINE__);
         }
           
       }
     }
-    //printf("MB0: End\n");
   }
 
   void process1(pkg_topo_t pkg_ptr, int sender_rank) {
-    //printf("MB1: Reached\n");
     //see if rowlast is updated correctly here
     if (!(pkg_ptr.row & type_mask)) {
-      //printf("MB1: Inside if-statement\n");
       lrowsum[pkg_ptr.row] -= pkg_ptr.col;
       lrowcnt[pkg_ptr.row]--;
       /* update the level for this row */
@@ -197,8 +190,10 @@ class TopoSort: public hclib::Selector<2, pkg_topo_t> {
         lrowqueue[(*rowlast)++] = pkg_ptr.row;
         outVariableToNewFile("rowlast", *rowlast, __LINE__);
       }
+    } else {
+      lcolqueue[*collast] = (pkg_ptr.col)/THREADS;
+      lcolqueue_level[(*collast)++] = pkg_ptr.level;
     }
-    //printf("MB1: End\n");
   }
 
 public:
