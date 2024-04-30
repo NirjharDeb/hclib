@@ -1,3 +1,6 @@
 {
-    "cmake.sourceDirectory": "/root/hclib/modules/bale_actor/translator"
+    "cmake.sourceDirectory": "/root/hclib/modules/bale_actor/translator",
+    "files.associations": {
+        "ostream": "cpp"
+    }
 }

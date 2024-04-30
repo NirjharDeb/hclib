@@ -46,6 +46,56 @@ extern "C" {
 #include <std_options.h>
 #include "selector.h"
 
+#define THREADS shmem_n_pes()
+#define MYTHREAD shmem_my_pe()
+
+//Printing to a new file (DEBUGGING)
+#include <fstream>
+#include <iostream>
+#include <string>
+
+using namespace std;
+
+#include <bits/stdc++.h>
+
+// Delete a folder (if it exists) and recreate it
+void resetFolder(string folder_name) {
+  int folderRemoval = system(("rm -rf " + folder_name).c_str());
+  if (folderRemoval) {
+    printf("Failed to delete folder.\n");
+  }
+  int folderCreation = system(("mkdir " + folder_name).c_str());
+  if (folderCreation) {
+    printf("Failed to create folder.\n");
+  }
+}
+
+// Print out value of variable to a new file titled "variable_name.txt" in toposort_outputs folder
+void outVariableToNewFile(string name, int64_t value, int lineNumber) {
+  int pe = MYTHREAD;
+
+  //Track number of times this method has been called across all PEs
+  static unsigned int call_count = 0;
+  call_count++;
+
+  //If PE is 0 and this is the first call to method, reset the toposort_outputs folder
+  if (call_count == 1 && pe == 0) {
+    resetFolder("toposort_outputs");
+  }
+
+  string file_name = "toposort_outputs/" + name + "[" + to_string(pe) + "]" + ".txt";
+
+  ofstream output_file(file_name, ios::app);
+
+  if (output_file.is_open()) {
+    string new_line = "PE[" + to_string(pe) + "] [" + name + "][" + to_string(lineNumber) + "] " + to_string(value);
+    output_file << new_line << endl;
+    output_file.close();
+  } else {
+    printf(("Failed to write " + name + " to output file.\n").c_str());
+  }
+}
+
 typedef struct pkg_topo_t {
   int64_t row;
   int64_t col;
