@@ -145,10 +145,8 @@ class TopoSort: public hclib::Selector<2, pkg_topo_t> {
 
  void process0(pkg_topo_t pkg_ptr, int sender_rank) {
     if (pkg_ptr.row & type_mask) {
-      outVariableToNewFile("pkg.row", pkg_ptr.row, __LINE__);
       lcolqueue[*collast] = (pkg_ptr.col)/THREADS;
       lcolqueue_level[(*collast)++] = pkg_ptr.level;
-      outVariableToNewFile("collast", *collast, __LINE__);
 
       //Integration of column while loop
       while (colnext <= *collast) {
@@ -188,12 +186,10 @@ class TopoSort: public hclib::Selector<2, pkg_topo_t> {
       }
       if(lrowcnt[pkg_ptr.row] == 1){
         lrowqueue[(*rowlast)++] = pkg_ptr.row;
-        outVariableToNewFile("rowlast", *rowlast, __LINE__);
       }
     } else {
       lcolqueue[*collast] = (pkg_ptr.col)/THREADS;
       lcolqueue_level[(*collast)++] = pkg_ptr.level;
-      outVariableToNewFile("collast", *collast, __LINE__);
     }
   }
 
@@ -250,7 +246,6 @@ double toposort_matrix_selector(SHARED int64_t *rperm, SHARED int64_t *cperm, sp
     lrowcnt[i] = mat->loffset[i+1] - mat->loffset[i];
     if(lrowcnt[i] == 1){
       lrowqueue[rowlast++] = i;
-      outVariableToNewFile("rowlast", rowlast, __LINE__);
       level[i] = 0;
     }
     for(int j = mat->loffset[i]; j < mat->loffset[i+1]; j++)
@@ -284,23 +279,16 @@ double toposort_matrix_selector(SHARED int64_t *rperm, SHARED int64_t *cperm, sp
     int64_t pe = 0;
     while (topo->r_and_c_done != (lnr + lnc)) {
       //Use the finish wrapper around the row loop (maybe move the finish from above)
-      //outVariableToNewFile("topo->r_and_c_done", topo->r_and_c_done, __LINE__);
-
-      //check if rowlast updated inside the message handler (use GDB)
       while (rownext < rowlast) {
         row = pkg.row = lrowqueue[rownext];
-        //outVariableToNewFile("pkg.row", pkg.row, __LINE__);
         pkg.row |= type_mask;
-        //outVariableToNewFile("pkg.row", pkg.row, __LINE__);
         pkg.col = lrowsum[row];
         pkg.level = level[row];
         matched_col[row] = pkg.col;
         pe = pkg.col % THREADS;
-        //printf("[PE%d] MAIN - send message to pe: %ld \n", MYTHREAD, pe);
         topo->send(0, pkg, pe);
         topo->r_and_c_done++;
-        //outVariableToNewFile("topo->r_and_c_done", topo->r_and_c_done, __LINE__);
-        //printf("[PE%d] MAIN: r_and_c_done: %ld | lnr + lnc: %ld\n", MYTHREAD, topo->r_and_c_done, (lnr + lnc));
+        outVariableToNewFile("topo->r_and_c_done", topo->r_and_c_done, __LINE__);
         rownext++;
       }
       //still needs yield to run
