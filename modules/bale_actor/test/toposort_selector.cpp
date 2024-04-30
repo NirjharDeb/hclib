@@ -144,7 +144,7 @@ class TopoSort: public hclib::Selector<2, pkg_topo_t> {
 
 
  void process0(pkg_topo_t pkg_ptr, int sender_rank) {
-    //if (pkg_ptr.row & type_mask) {
+    if (pkg_ptr.row & type_mask) {
       outVariableToNewFile("pkg.row", pkg_ptr.row, __LINE__);
       lcolqueue[*collast] = (pkg_ptr.col)/THREADS;
       lcolqueue_level[(*collast)++] = pkg_ptr.level;
@@ -172,7 +172,7 @@ class TopoSort: public hclib::Selector<2, pkg_topo_t> {
         }
           
       }
-    //}
+    }
   }
 
   void process1(pkg_topo_t pkg_ptr, int sender_rank) {
@@ -217,7 +217,6 @@ class TopoSortCPerm: public hclib::Selector<1, pkg_cperm_t> {
 public:
   TopoSortCPerm(int64_t *lcperm) : lcperm(lcperm) {
     mb[0].process = [this](pkg_cperm_t pkg, int sender_rank) { this->process(pkg, sender_rank); };
-    //mb[1].process = [this](pkg_cperm_t pkg, int sender_rank) { this->process(pkg, sender_rank); };
   }
 };
 
