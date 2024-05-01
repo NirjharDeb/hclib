@@ -125,13 +125,13 @@ class TopoSort: public hclib::Selector<2, pkg_topo_t> {
   int64_t *collast;
 
   //New variables
-  int64_t curr_col;
-  int64_t col_level;
-  int64_t colstart;
-  int64_t colend;
-  int64_t colnext;
-  int64_t row;
-  int64_t pe;
+  int64_t curr_col = 0;
+  int64_t col_level = 0;
+  int64_t colstart = 0;
+  int64_t colend = 0;
+  int64_t colnext = 0;
+  int64_t row = 0;
+  int64_t pe = 0;
 
    /**
     * Make some methods to print out the different shared variables.
@@ -156,6 +156,8 @@ class TopoSort: public hclib::Selector<2, pkg_topo_t> {
           col_level = lcolqueue_level[colnext++];
           colstart = tmat->loffset[curr_col];
           colend = tmat->loffset[curr_col + 1];
+          //outVariableToNewFile("colstart", colstart, __LINE__);
+          //outVariableToNewFile("colend", colend, __LINE__);
         }
         row = tmat->lnonzero[colstart];
         pkg_ptr.row = row/THREADS;
@@ -165,8 +167,9 @@ class TopoSort: public hclib::Selector<2, pkg_topo_t> {
         send(1, pkg_ptr, pe);
         colstart++;
         if (colstart == colend) {
+          //This is not being updated on time.
           r_and_c_done++;
-          outVariableToNewFile("topo->r_and_c_done", r_and_c_done, __LINE__);
+          outVariableToNewFile("r_and_c_done", r_and_c_done, __LINE__);
         }
           
       }
@@ -288,7 +291,7 @@ double toposort_matrix_selector(SHARED int64_t *rperm, SHARED int64_t *cperm, sp
         pe = pkg.col % THREADS;
         topo->send(0, pkg, pe);
         topo->r_and_c_done++;
-        outVariableToNewFile("topo->r_and_c_done", topo->r_and_c_done, __LINE__);
+        outVariableToNewFile("r_and_c_done", topo->r_and_c_done, __LINE__);
         rownext++;
       }
       //still needs yield to run
