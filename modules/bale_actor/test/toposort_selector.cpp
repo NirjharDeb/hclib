@@ -163,7 +163,6 @@ class TopoSort: public hclib::Selector<2, pkg_topo_t> {
         pkg_ptr.level = col_level;
         pe = row % THREADS;
         send(1, pkg_ptr, pe);
-        printf("[PE%d] We will increment colstart in MB0.\n", MYTHREAD);
         colstart++;
         if (colstart == colend) {
           r_and_c_done++;
