@@ -169,7 +169,7 @@ class TopoSort: public hclib::Selector<2, pkg_topo_t> {
         if (colstart == colend) {
           //This is not being updated on time.
           r_and_c_done++;
-          outVariableToNewFile("r_and_c_done", r_and_c_done, __LINE__);
+          //outVariableToNewFile("r_and_c_done", r_and_c_done, __LINE__);
         }
           
       }
@@ -220,7 +220,7 @@ public:
 };
 
 double toposort_matrix_selector(SHARED int64_t *rperm, SHARED int64_t *cperm, sparsemat_t *mat, sparsemat_t *tmat) {
-  printf("[PE%d] Running Toposort with conveyors ...\n", MYTHREAD);
+  //printf("[PE%d] Running Toposort with conveyors ...\n", MYTHREAD);
   int64_t nr = mat->numrows;
   int64_t nc = mat->numcols;
   int64_t lnr = (nr + THREADS - MYTHREAD - 1)/THREADS;
@@ -256,7 +256,7 @@ double toposort_matrix_selector(SHARED int64_t *rperm, SHARED int64_t *cperm, sp
   }
 
   int64_t num_levels = 0;  
-  printf("[PE%d] Will create topo\n", MYTHREAD);
+  //printf("[PE%d] Will create topo\n", MYTHREAD);
   TopoSort *topo = new TopoSort(tmat, lrowqueue, lrowsum, lcolqueue, lcolqueue_level, lrowcnt, level, matched_col, &rowlast, &collast);
 
   lgp_barrier();
@@ -291,7 +291,7 @@ double toposort_matrix_selector(SHARED int64_t *rperm, SHARED int64_t *cperm, sp
         pe = pkg.col % THREADS;
         topo->send(0, pkg, pe);
         topo->r_and_c_done++;
-        outVariableToNewFile("r_and_c_done", topo->r_and_c_done, __LINE__);
+        //outVariableToNewFile("r_and_c_done", topo->r_and_c_done, __LINE__);
         rownext++;
       }
       //still needs yield to run
@@ -300,7 +300,7 @@ double toposort_matrix_selector(SHARED int64_t *rperm, SHARED int64_t *cperm, sp
     topo->done(0);
   });
   
-  printf("[PE%d] Done with finish statement\n", MYTHREAD);
+  //printf("[PE%d] Done with finish statement\n", MYTHREAD);
 
   num_levels = topo->getNumLevels();
   delete topo;
@@ -329,7 +329,7 @@ double toposort_matrix_selector(SHARED int64_t *rperm, SHARED int64_t *cperm, sp
   for(int i = 0; i < lnr; i++){
     lrperm[i] = (nr - 1) - level_start[level[i]]++;
   }
-  printf("[PE%d] Will create topocperm\n", MYTHREAD);
+  //printf("[PE%d] Will create topocperm\n", MYTHREAD);
   TopoSortCPerm *topocperm = new TopoSortCPerm(lcperm);
   hclib::finish([=]() {
     topocperm->start();
@@ -342,7 +342,7 @@ double toposort_matrix_selector(SHARED int64_t *rperm, SHARED int64_t *cperm, sp
     }
     topocperm->done(0);
   });
-  printf("[PE%d] Reached end of second finish\n", MYTHREAD);
+  //printf("[PE%d] Reached end of second finish\n", MYTHREAD);
   delete topocperm;
   lgp_barrier();  
   
@@ -493,7 +493,7 @@ sparsemat_t * generate_toposort_input(int64_t numrows, double prob, int64_t rand
   sparsemat_t * omat;
   int64_t numcols = numrows;
 
-  T0_fprintf(stderr,"Creating input matrix for toposort\n");fflush(stderr);
+  //T0_fprintf(stderr,"Creating input matrix for toposort\n");fflush(stderr);
   double t = wall_seconds();
   omat = transpose_matrix(erdos_renyi_random_graph(numrows, prob, UNDIRECTED, LOOPS, rand_seed));
   T0_printf("generate ER graph time %lf\n", wall_seconds() - t);
