@@ -97,6 +97,38 @@ void outVariableToNewFile(string name, int64_t value, int lineNumber) {
   }
 }
 
+/**
+ * Print variable to 1 file across all PEs (used for performance metrics)
+ * Persistent across different sbatch runs
+ * File can only be cleared by manually deleting it
+ * 
+ * WARNING: This method is only valid if the variable you print out is the same for all PEs. 
+ * One such example of a variable is "laptime", which is the time it took for the selector to run
+ * successfully.
+*/
+void outVariableToNewFileGlobal(string name, double_t value) {
+  int pe = MYTHREAD;
+
+  //Track number of times this method has been called across all PEs
+  static unsigned int call_count = 0;
+  call_count++;
+
+  //If PE is 0 and this is the first call to method, update variable file
+  if (call_count == 1 && pe == 0) {
+    string file_name = "toposort_selector_" + name + "[" + to_string(THREADS) + "]" +  ".txt";
+
+    ofstream output_file(file_name, ios::app);
+
+    if (output_file.is_open()) {
+      string new_line = to_string(value);
+      output_file << new_line << endl;
+      output_file.close();
+    } else {
+      printf(("Failed to write " + name + " to output file.\n").c_str());
+    }
+  }
+}
+
 typedef struct pkg_topo_t {
   int64_t row;
   int64_t col;
@@ -623,6 +655,7 @@ int main(int argc, char * argv[]) {
 
     lgp_barrier();
     T0_fprintf(stderr,"  %8.3lf seconds\n", laptime);
+    outVariableToNewFileGlobal("laptime", laptime);
 
     if( check_is_triangle(mat, rperminv2, cperminv2, dump_files) ) {
       printf("\nERROR: After toposort_matrix_upc: mat2 is not upper-triangular!\n");
