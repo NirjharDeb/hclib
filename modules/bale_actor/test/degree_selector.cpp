@@ -1,6 +1,7 @@
 #include <math.h>
 #include <shmem.h>
 #include <assert.h>
+#include <iostream>
 extern "C" {
 #include "spmat.h"
 }
@@ -83,6 +84,39 @@ double degree_selector(int64_t* degrees, sparsemat_t* L) {
     return t1;
 }
 
+void validate_degree_counts(sparsemat_t* L, int64_t* degrees) {
+    int64_t total_edges = 0;
+    int64_t total_degree_counts = 0;
+
+    // Calculate total edges in the graph (count each edge only once in the lower triangular part)
+    for (int64_t i = 0; i < L->lnumrows; i++) {
+        for (int64_t k = L->loffset[i]; k < L->loffset[i + 1]; k++) {
+            total_edges++;
+        }
+    }
+
+    // Reduce total edges across all threads
+    total_edges = lgp_reduce_add_l(total_edges);
+    T0_printf("Total edges: %ld\n", total_edges);
+
+    // Calculate the total degree count from degrees array
+    for (int64_t i = 0; i < L->lnumrows; ++i) {
+        total_degree_counts += degrees[i];
+    }
+
+    // Reduce total degree count across all threads
+    total_degree_counts = lgp_reduce_add_l(total_degree_counts);
+    T0_printf("Total degree counts: %ld\n", total_degree_counts);
+
+    // Verify the sum of all degrees is twice the number of edges
+    if (total_degree_counts == 2 * total_edges) {
+        T0_printf("Valid: Total degree counts match twice the number of edges.\n");
+    } else {
+        T0_printf("Invalid: Total degree counts do not match twice the number of edges.\n");
+        T0_printf("Total degree counts: %ld, Expected: %ld\n", total_degree_counts, 2 * total_edges);
+    }
+}
+
 int main(int argc, char* argv[]) {
     const char *deps[] = { "system", "bale_actor" };
     hclib::launch(deps, 2, [=] {
@@ -132,10 +166,13 @@ int main(int argc, char* argv[]) {
         int64_t total_degree_counts = lgp_reduce_add_l(local_degree_count);
         T0_printf("Total degrees: %ld\n", total_degree_counts);
 
+        // Validate degree counts
+        validate_degree_counts(L, degrees);
+
         free(degrees);
 
-        return 0;
+        return 0;  // Explicit return for normal execution
     });
 
-    return 0;
+    return 0;  // Add a return statement at the end of main function
 }
