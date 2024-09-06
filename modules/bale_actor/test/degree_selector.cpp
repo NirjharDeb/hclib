@@ -35,16 +35,23 @@ private:
             return;
         }
 
-        int64_t degree_count = 0;
+        // Explicitly count both directions of each edge
         for (int64_t k = mat_->loffset[pkg.node]; k < mat_->loffset[pkg.node + 1]; k++) {
             if (k >= mat_->lnnz) {
                 T0_printf("ERROR: Invalid index in lnonzero %ld\n", k);
                 return;
             }
-            degree_count++;
-        }
 
-        degrees_[pkg.node] += degree_count;
+            int64_t neighbor = mat_->lnonzero[k];
+
+            // Count for the current node
+            degrees_[pkg.node]++;
+
+            // Also count for the neighbor node in the undirected graph, enforcing symmetry
+            if (neighbor != pkg.node && neighbor < mat_->lnumrows) {  
+                degrees_[neighbor]++;
+            }
+        }
     }
 };
 
@@ -58,6 +65,7 @@ double degree_selector(int64_t* degrees, sparsemat_t* L) {
 
     DegreeSelector* degSelector = new DegreeSelector(degrees, L);
 
+    // Start degree selection across PEs
     hclib::finish([=]() {
         degSelector->start();
         int64_t l_i;
@@ -71,13 +79,20 @@ double degree_selector(int64_t* degrees, sparsemat_t* L) {
                 continue;
             }
 
-            int64_t pe = l_i % THREADS;
+            // Convert local node index to global node index
+            int64_t global_node = MYTHREAD * L->lnumrows + l_i;
+
+            // Compute the destination PE based on the global node ID
+            int64_t pe = global_node % THREADS;
+
+            // Send request to the appropriate PE
             degSelector->send(REQUEST, pkg, pe);
         }
 
         degSelector->done(REQUEST);
     });
 
+    // Ensure all degree counting has finished across PEs before proceeding
     lgp_barrier();
 
     t1 = wall_seconds() - t1;
@@ -88,10 +103,14 @@ void validate_degree_counts(sparsemat_t* L, int64_t* degrees) {
     int64_t total_edges = 0;
     int64_t total_degree_counts = 0;
 
-    // Calculate total edges in the graph (count each edge only once in the lower triangular part)
+    // Manually calculate total edges in the graph (count each edge only once)
     for (int64_t i = 0; i < L->lnumrows; i++) {
         for (int64_t k = L->loffset[i]; k < L->loffset[i + 1]; k++) {
-            total_edges++;
+            int64_t neighbor = L->lnonzero[k];
+            // Count edges only once for undirected graphs (lower triangle or unique edges)
+            if (i < neighbor) {  // Only count each edge once
+                total_edges++;
+            }
         }
     }
 
@@ -107,6 +126,9 @@ void validate_degree_counts(sparsemat_t* L, int64_t* degrees) {
     // Reduce total degree count across all threads
     total_degree_counts = lgp_reduce_add_l(total_degree_counts);
     T0_printf("Total degree counts: %ld\n", total_degree_counts);
+
+    // Ensure all degree counting and reductions have finished across PEs
+    lgp_barrier();
 
     // Verify the sum of all degrees is twice the number of edges
     if (total_degree_counts == 2 * total_edges) {
