@@ -35,7 +35,7 @@ private:
             return;
         }
 
-        // Explicitly count both directions of each edge
+        // Count both directions of each edge explicitly
         for (int64_t k = mat_->loffset[pkg.node]; k < mat_->loffset[pkg.node + 1]; k++) {
             if (k >= mat_->lnnz) {
                 T0_printf("ERROR: Invalid index in lnonzero %ld\n", k);
@@ -47,7 +47,7 @@ private:
             // Count for the current node
             degrees_[pkg.node]++;
 
-            // Also count for the neighbor node in the undirected graph, enforcing symmetry
+            // Also count for the neighbor node in the undirected graph
             if (neighbor != pkg.node && neighbor < mat_->lnumrows) {  
                 degrees_[neighbor]++;
             }
@@ -103,12 +103,13 @@ void validate_degree_counts(sparsemat_t* L, int64_t* degrees) {
     int64_t total_edges = 0;
     int64_t total_degree_counts = 0;
 
-    // Manually calculate total edges in the graph (count each edge only once)
+    // Calculate total edges in the graph by counting each edge for both nodes
     for (int64_t i = 0; i < L->lnumrows; i++) {
         for (int64_t k = L->loffset[i]; k < L->loffset[i + 1]; k++) {
             int64_t neighbor = L->lnonzero[k];
-            // Count edges only once for undirected graphs (lower triangle or unique edges)
-            if (i < neighbor) {  // Only count each edge once
+
+            // Count each edge twice (once for each direction)
+            if (i < neighbor) {
                 total_edges++;
             }
         }
@@ -116,6 +117,7 @@ void validate_degree_counts(sparsemat_t* L, int64_t* degrees) {
 
     // Reduce total edges across all threads
     total_edges = lgp_reduce_add_l(total_edges);
+    total_edges *= 2;  // Account for both directions of each edge
     T0_printf("Total edges: %ld\n", total_edges);
 
     // Calculate the total degree count from degrees array
