@@ -35,22 +35,14 @@ private:
             return;
         }
 
-        // Count both directions of each edge explicitly
+        // Summing only the local vertex degrees
         for (int64_t k = mat_->loffset[pkg.node]; k < mat_->loffset[pkg.node + 1]; k++) {
             if (k >= mat_->lnnz) {
                 T0_printf("ERROR: Invalid index in lnonzero %ld\n", k);
                 return;
             }
 
-            int64_t neighbor = mat_->lnonzero[k];
-
-            // Count for the current node
-            degrees_[pkg.node]++;
-
-            // Also count for the neighbor node in the undirected graph
-            if (neighbor != pkg.node && neighbor < mat_->lnumrows) {  
-                degrees_[neighbor]++;
-            }
+            degrees_[pkg.node]++;  // Only count for the current node
         }
     }
 };
@@ -79,8 +71,8 @@ double degree_selector(int64_t* degrees, sparsemat_t* L) {
                 continue;
             }
 
-            // Convert local node index to global node index
-            int64_t global_node = MYTHREAD * L->lnumrows + l_i;
+            // Convert local node index to global node index using the correct formula
+            int64_t global_node = l_i * THREADS + MYTHREAD;
 
             // Compute the destination PE based on the global node ID
             int64_t pe = global_node % THREADS;
