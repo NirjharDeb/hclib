@@ -95,21 +95,15 @@ void validate_degree_counts(sparsemat_t* L, int64_t* degrees) {
     int64_t total_edges = 0;
     int64_t total_degree_counts = 0;
 
-    // Calculate total edges in the graph by counting each edge for both nodes
+    // Calculate total edges in the graph
     for (int64_t i = 0; i < L->lnumrows; i++) {
         for (int64_t k = L->loffset[i]; k < L->loffset[i + 1]; k++) {
-            int64_t neighbor = L->lnonzero[k];
-
-            // Count each edge twice (once for each direction)
-            if (i < neighbor) {
-                total_edges++;
-            }
+            total_edges++;  // Each entry in the lower triangular matrix represents an edge
         }
     }
 
     // Reduce total edges across all threads
     total_edges = lgp_reduce_add_l(total_edges);
-    total_edges *= 2;  // Account for both directions of each edge
     T0_printf("Total edges: %ld\n", total_edges);
 
     // Calculate the total degree count from degrees array
@@ -124,12 +118,12 @@ void validate_degree_counts(sparsemat_t* L, int64_t* degrees) {
     // Ensure all degree counting and reductions have finished across PEs
     lgp_barrier();
 
-    // Verify the sum of all degrees is twice the number of edges
-    if (total_degree_counts == 2 * total_edges) {
-        T0_printf("Valid: Total degree counts match twice the number of edges.\n");
+    // Verify the sum of all degrees equals the number of edges
+    if (total_degree_counts == total_edges) {
+        T0_printf("Valid: Total degree counts match the number of edges.\n");
     } else {
-        T0_printf("Invalid: Total degree counts do not match twice the number of edges.\n");
-        T0_printf("Total degree counts: %ld, Expected: %ld\n", total_degree_counts, 2 * total_edges);
+        T0_printf("Invalid: Total degree counts do not match the number of edges.\n");
+        T0_printf("Total degree counts: %ld, Expected: %ld\n", total_degree_counts, total_edges);
     }
 }
 
