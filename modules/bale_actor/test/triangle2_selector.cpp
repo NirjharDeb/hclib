@@ -1,14 +1,13 @@
 /******************************************************************
 //
-//  Modified code based on original by Institute for Defense Analyses
-//  under BSD-like license.
+//  Optimized triangle counting code for lower triangular graphs.
 //
 //  This software is provided under the terms of the license at the top
 //  of the original code.
 //
 ******************************************************************/
-/*! \file triangle_counting.cpp
- *  \brief Triangle counting in a lower triangular graph.
+/*! \file triangle_counting_optimized.cpp
+ *  \brief Optimized triangle counting in a lower triangular graph.
  */
 
 #include <cmath>
@@ -55,30 +54,30 @@ private:
 
     // Function to process incoming triangle checking requests
     void process_request(TriangleMessage msg, int sender_pe) {
-        int64_t triangles_found = 0;
-
         // Get the range of non-zero entries for the target vertex
         int64_t start = matrix_->loffset[msg.target_vertex];
         int64_t end = matrix_->loffset[msg.target_vertex + 1];
 
-        // Iterate over the non-zero entries to check for the existence of the neighbor vertex
-        for (int64_t idx = start; idx < end; idx++) {
-            int64_t current_neighbor = matrix_->lnonzero[idx];
+        // Use binary search to check if neighbor_vertex exists in the adjacency list
+        int64_t* neighbors = matrix_->lnonzero;
+        int64_t left = start;
+        int64_t right = end - 1;
 
-            // If the neighbor vertex matches, increment the triangle count
-            if (msg.neighbor_vertex == current_neighbor) {
-                triangles_found++;
-                break;  // Triangle found, exit the loop
-            }
+        while (left <= right) {
+            int64_t mid = left + (right - left) / 2;
+            int64_t current_neighbor = neighbors[mid];
 
-            // Since the entries are sorted, we can break early if neighbor_vertex is smaller
-            if (msg.neighbor_vertex < current_neighbor) {
-                break;
+            if (current_neighbor == msg.neighbor_vertex) {
+                // Atomically update the shared triangle count
+                shmem_long_atomic_add(triangle_count_, 1, MY_PE);
+                return;  // Triangle found, exit
+            } else if (current_neighbor < msg.neighbor_vertex) {
+                left = mid + 1;
+            } else {
+                right = mid - 1;
             }
         }
-
-        // Atomically update the shared triangle count
-        *triangle_count_ += triangles_found;
+        // No triangle found, do nothing
     }
 };
 
@@ -101,40 +100,38 @@ double count_triangles(int64_t* triangle_count, int64_t* messages_sent, sparsema
     hclib::finish([=, &local_messages_sent]() {
         counter->start();  // Start the message processing
 
-        // Iterate over each local row in the lower triangular matrix L
-        for (int64_t local_row = 0; local_row < L->lnumrows; local_row++) {
-            int64_t global_row = local_row * NUM_PES + MY_PE;  // Calculate the global row index
+        // Parallelize over local rows
+        hclib::forasync(int64_t(0), L->lnumrows, [=, &local_messages_sent](int64_t local_row) {
+            int64_t global_row = local_row * NUM_PES + MY_PE;  // Global index of the row
 
             // Get the range of neighbors for the current row
             int64_t row_start = L->loffset[local_row];
             int64_t row_end = L->loffset[local_row + 1];
 
-            // Iterate over each neighbor in the current row
+            // Iterate over each neighbor j in the current row
             for (int64_t idx = row_start; idx < row_end; idx++) {
-                int64_t neighbor_col = L->lnonzero[idx];  // Neighbor column (vertex)
+                int64_t neighbor_j = L->lnonzero[idx];  // Neighbor vertex j
 
-                // Determine the processing element (PE) responsible for neighbor_col
-                int64_t dest_pe = neighbor_col % NUM_PES;
-                int64_t dest_local_index = neighbor_col / NUM_PES;
+                // Since the graph is lower triangular, global_row > neighbor_j
+                // Determine the PE responsible for neighbor_j
+                int64_t dest_pe = neighbor_j % NUM_PES;
+                int64_t dest_local_index = neighbor_j / NUM_PES;
 
-                TriangleMessage msg;
-                msg.target_vertex = dest_local_index;  // Set the target vertex in the message
+                // For each neighbor k in adjacency list of i, where k < neighbor_j
+                for (int64_t idx2 = row_start; idx2 < idx; idx2++) {
+                    int64_t neighbor_k = L->lnonzero[idx2];
 
-                // Iterate again over the neighbors to create pairs for triangle checking
-                for (int64_t idx2 = row_start; idx2 < row_end; idx2++) {
-                    msg.neighbor_vertex = L->lnonzero[idx2];  // Neighbor vertex to check
-
-                    // Since the matrix is lower triangular and sorted, break early if necessary
-                    if (msg.neighbor_vertex > neighbor_col) {
-                        break;
-                    }
+                    // Prepare the message
+                    TriangleMessage msg;
+                    msg.neighbor_vertex = neighbor_k;
+                    msg.target_vertex = dest_local_index;
 
                     // Send the triangle checking request to the appropriate PE
                     local_messages_sent++;
                     counter->send(REQUEST_MAILBOX, msg, dest_pe);
                 }
             }
-        }
+        });
 
         // Indicate that no more messages will be sent to REQUEST_MAILBOX
         counter->done(REQUEST_MAILBOX);
@@ -185,6 +182,9 @@ int main(int argc, char* argv[]) {
             }
         }
 
+        // Initialize SHMEM
+        shmem_init();
+
         // Calculate total number of rows in the graph
         int64_t total_rows = rows_per_pe * NUM_PES;
 
@@ -208,23 +208,21 @@ int main(int argc, char* argv[]) {
                 assert(false);
             }
 
-            // Check if the graph is lower triangular
-            if (!is_lower_triangular(L, 0)) {
-                fprintf(stderr, "ERROR: The input graph is not lower triangular.\n");
-                assert(false);
-            }
-
             // Ensure that the non-zero entries are sorted
             sort_nonzeros(L);
-        } else {
-            // Generate an Erdős-Rényi random graph
-            L = erdos_renyi_random_graph(total_rows, erdos_renyi_prob, UNDIRECTED, NOLOOPS, 12345);
 
             // Ensure that the graph is lower triangular
             if (!is_lower_triangular(L, 0)) {
                 // Convert to lower triangular form
+                T0_fprintf(stderr, "Converting matrix to lower triangular form.\n");
                 tril(L, -1);  // Keep only the lower triangular part
             }
+        } else {
+            // Generate an Erdős-Rényi random graph
+            L = erdos_renyi_random_graph_dist(total_rows, erdos_renyi_prob, UNDIRECTED, NOLOOPS, 12345);
+
+            // Convert to lower triangular form
+            tril(L, -1);  // Keep only the lower triangular part
 
             // Sort the non-zero entries
             sort_nonzeros(L);
@@ -245,23 +243,30 @@ int main(int argc, char* argv[]) {
         int64_t local_messages_sent = 0;
         int64_t total_messages_sent = 0;
 
+        // Initialize shared triangle count
+        int64_t* triangle_count = (int64_t*)shmem_malloc(sizeof(int64_t));
+        *triangle_count = 0;
+
         // Run the triangle counting algorithm
-        double computation_time = count_triangles(&local_triangle_count, &local_messages_sent, L);
+        double computation_time = count_triangles(triangle_count, &local_messages_sent, L);
 
         // Synchronize all PEs
         lgp_barrier();
 
         // Reduce the triangle counts and messages sent across all PEs
-        total_triangle_count = lgp_reduce_add_l(local_triangle_count);
+        total_triangle_count = *triangle_count;
         total_messages_sent = lgp_reduce_add_l(local_messages_sent);
 
         // Display the final results
         T0_fprintf(stderr, "Triangle counting completed.\n");
         T0_fprintf(stderr, "Elapsed time: %8.3lf seconds\n", computation_time);
         T0_fprintf(stderr, "Total triangles found: %16ld\n", total_triangle_count);
+        T0_fprintf(stderr, "Total messages sent: %16ld\n", total_messages_sent);
 
-        // Synchronize before exiting
-        lgp_barrier();
+        // Cleanup
+        shmem_free(triangle_count);
+        clear_matrix(L);
+        shmem_finalize();
     });
 
     return 0;
