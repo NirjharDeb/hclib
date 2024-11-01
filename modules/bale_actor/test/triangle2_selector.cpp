@@ -1,12 +1,12 @@
 /******************************************************************
 //
-//  Triangle counting code with binary search optimization.
+//  Triangle counting code with binary search optimization and verification.
 //
 //  Based on triangle.upc code style.
 //
  *****************************************************************/
 /*! \file triangle_counting.cpp
- *  \brief Triangle counting in a lower triangular graph with binary search optimization.
+ *  \brief Triangle counting in a lower triangular graph with binary search optimization and verification.
  */
 
 #include <math.h>
@@ -30,7 +30,7 @@ enum MailBoxType {REQUEST};
 class TriangleSelector: public hclib::Selector<1, TrianglePkt> {
 public:
     TriangleSelector(int64_t* cnt, sparsemat_t* mat) : cnt_(cnt), mat_(mat) {
-        mb[REQUEST].process = [this] (TrianglePkt pkt, int sender_rank) { 
+        mb[REQUEST].process = [this] (TrianglePkt pkt, int sender_rank) {
             this->req_process(pkt, sender_rank);
         };
     }
@@ -160,6 +160,7 @@ int main(int argc, char* argv[]) {
         char filename[64];
         double erdos_renyi_prob = 0.0;
         int64_t alg = 0;                   // Algorithm selection (0 or 1)
+        double correct_answer = -1;        // For verification
 
         // Parse command-line arguments
         int opt;
@@ -232,6 +233,58 @@ int main(int argc, char* argv[]) {
             assert(false);
         }
 
+        // Verification steps similar to the provided code
+        // Calculate degrees and related metrics
+        int64_t *cc = (int64_t*)lgp_all_alloc(L->numrows, sizeof(int64_t));
+        int64_t *l_cc = lgp_local_part(int64_t, cc);
+        for (int64_t i = 0; i < L->lnumrows; i++)
+            l_cc[i] = 0;
+
+        lgp_barrier();
+
+        // Calculate column sums (degree counts)
+        for (int64_t i = 0; i < L->lnnz; i++) {
+            int64_t lindex = L->lnonzero[i] / THREADS;
+            int64_t pe = L->lnonzero[i] % THREADS;
+            lgp_fetch_and_inc(&cc[lindex], pe);
+        }
+
+        lgp_barrier();
+
+        // Compute metrics for verification
+        int64_t rtimesc_calc = 0;
+        for (int64_t i = 0; i < L->lnumrows; i++) {
+            int64_t deg = L->loffset[i + 1] - L->loffset[i];
+            rtimesc_calc += deg * l_cc[i];
+        }
+
+        int64_t rchoose2_calc = 0;
+        for (int64_t i = 0; i < L->lnumrows; i++) {
+            int64_t deg = L->loffset[i + 1] - L->loffset[i];
+            rchoose2_calc += deg * (deg - 1) / 2;
+        }
+
+        int64_t cchoose2_calc = 0;
+        for (int64_t i = 0; i < L->lnumrows; i++) {
+            int64_t deg = l_cc[i];
+            cchoose2_calc += deg * (deg - 1) / 2;
+        }
+
+        int64_t pulls_calc = 0;
+        int64_t pushes_calc = 0;
+        if (alg == 0) {
+            pulls_calc = lgp_reduce_add_l(rtimesc_calc);
+            pushes_calc = lgp_reduce_add_l(rchoose2_calc);
+        } else {
+            pushes_calc = lgp_reduce_add_l(rtimesc_calc);
+            pulls_calc = lgp_reduce_add_l(cchoose2_calc);
+        }
+
+        lgp_all_free(cc);
+
+        T0_fprintf(stderr,"Calculated: Pulls = %ld\n            Pushes = %ld\n\n", pulls_calc, pushes_calc);
+
+        // Run triangle counting
         T0_fprintf(stderr, "Running triangle counting...\n");
         int64_t tri_cnt = 0;           // Partial count of triangles on this thread
         int64_t total_tri_cnt = 0;     // Total number of triangles across all threads
@@ -246,6 +299,13 @@ int main(int argc, char* argv[]) {
         total_sh_refs = lgp_reduce_add_l(sh_refs);
         T0_fprintf(stderr, "  %8.3lf seconds: %16ld triangles\n", laptime, total_tri_cnt);
         T0_fprintf(stderr, "  %16ld messages sent\n", total_sh_refs);
+
+        // Verification of the result
+        if (correct_answer >= 0 && total_tri_cnt != (int64_t)correct_answer) {
+            T0_fprintf(stderr, "ERROR: Wrong answer!\n");
+        } else if (correct_answer == -1) {
+            correct_answer = total_tri_cnt;
+        }
 
         lgp_barrier();
 
