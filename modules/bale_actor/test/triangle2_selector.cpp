@@ -28,6 +28,57 @@ extern "C" {
 #define NUM_PES shmem_n_pes()
 #define MY_PE shmem_my_pe()
 
+using namespace std;
+
+//Printing to a new file (DEBUGGING)
+#include <fstream>
+#include <iostream>
+#include <string>
+
+// Delete a folder (if it exists) and recreate it
+void resetFolder(string folder_name) {
+  int folderRemoval = system(("rm -rf " + folder_name).c_str());
+  if (folderRemoval) {
+    printf("Failed to delete folder.\n");
+  }
+  int folderCreation = system(("mkdir " + folder_name).c_str());
+  if (folderCreation) {
+    printf("Failed to create folder.\n");
+  }
+}
+
+/**
+ * Print variable to 1 file across all PEs (used for performance metrics)
+ * Persistent across different sbatch runs
+ * File can only be cleared by manually deleting it
+ * 
+ * WARNING: This method is only valid if the variable you print out is the same for all PEs. 
+ * One such example of a variable is "laptime", which is the time it took for the selector to run
+ * successfully.
+*/
+void outVariableToNewFileGlobal(string name, double_t value) {
+  int pe = MYTHREAD;
+
+  //Track number of times this method has been called across all PEs
+  static unsigned int call_count = 0;
+  call_count++;
+
+  //If PE is 0 and this is the first call to method, update variable file
+  if (call_count == 1 && pe == 0) {
+    string file_name = "triangle_selector_" + name + "[" + to_string(THREADS) + "]" +  ".txt";
+
+    ofstream output_file(file_name, ios::app);
+
+    if (output_file.is_open()) {
+      string new_line = to_string(value);
+      output_file << new_line << endl;
+      output_file.close();
+    } else {
+      printf(("Failed to write " + name + " to output file.\n").c_str());
+    }
+  }
+}
+
 // Structure to represent a message containing vertices for triangle checking
 typedef struct {
     int64_t neighbor_vertex;  // The neighbor vertex to check
@@ -259,6 +310,9 @@ int main(int argc, char* argv[]) {
         T0_fprintf(stderr, "Triangle counting completed.\n");
         T0_fprintf(stderr, "Elapsed time: %8.3lf seconds\n", computation_time);
         T0_fprintf(stderr, "Total triangles found: %16ld\n", total_triangle_count);
+
+        // add laptime to external file
+        outVariableToNewFileGlobal("computation_time", computation_time);
 
         // Synchronize before exiting
         lgp_barrier();
