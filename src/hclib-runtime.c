@@ -254,8 +254,10 @@ void hclib_global_init() {
         load_locality_info(locality_graph_path, &nworkers, &graph,
                 &worker_paths);
     } else {
+#if 0
         fprintf(stderr, "WARNING: HCLIB_LOCALITY_FILE not provided, generating "
                 "sane default locality information\n");
+#endif
         generate_locality_info(&nworkers, &graph, &worker_paths);
     }
     check_locality_graph(graph, worker_paths, nworkers);
@@ -305,8 +307,10 @@ static void load_dependencies(const char **module_dependencies,
                 module_name);
         void *handle = dlopen(module_path_buf, RTLD_LAZY);
         if (handle == NULL) {
+#if 0             
             fprintf(stderr, "WARNING: Failed dynamically loading %s for \"%s\" "
                     "dependency\n", module_path_buf, module_name);
+#endif             
         }
     }
 }
