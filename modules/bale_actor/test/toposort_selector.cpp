@@ -250,13 +250,8 @@ double toposort_matrix_selector(SHARED int64_t *rperm, SHARED int64_t *cperm, sp
   num_levels = lgp_reduce_max_l(num_levels);
 
   // Allocate level_sizes and level_start in symmetric memory
-  SHARED int64_t * level_sizes = (int64_t*)lgp_all_alloc(num_levels, sizeof(int64_t));
-  SHARED int64_t * level_start = (int64_t*)lgp_all_alloc(num_levels, sizeof(int64_t));
-
-  // Initialize level_sizes to zero
-  for(int64_t i = 0; i < num_levels; i++){
-    level_sizes[i] = 0;
-  }
+  int64_t * level_sizes = (int64_t*)calloc(num_levels, sizeof(int64_t));
+  int64_t * level_start = (int64_t*)calloc(num_levels, sizeof(int64_t));
 
   // Count level sizes locally
   for(int64_t i = 0; i < lnr; i++){
