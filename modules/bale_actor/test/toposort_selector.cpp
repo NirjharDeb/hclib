@@ -57,7 +57,7 @@ typedef struct pkg_cperm_t {
   int64_t col;
 } pkg_cperm_t;
 
-class TopoSort: public hclib::Selector<3, pkg_topo_t> {
+class TopoSort: public hclib::Selector<1, pkg_topo_t> {
   sparsemat_t *tmat;
   int64_t *lrowqueue;
   int64_t *lrowsum;
@@ -70,33 +70,27 @@ class TopoSort: public hclib::Selector<3, pkg_topo_t> {
   int64_t num_levels = 0;
   uint64_t type_mask = 0x8000000000000000;
 
-  int64_t *rownext;
-  int64_t *rowlast;
-  int64_t *colnext;
-  int64_t *collast;
   int64_t lnr;
   int64_t lnc;
 
-  // Variables for column processing
-  int64_t curr_col = 0;
-  int64_t col_level = 0;
-  int64_t colstart = 0;
-  int64_t colend = 0;
-  int64_t row = 0;
-  int64_t pe = 0;
+  // Variables for processing queues
+  int64_t rownext = 0;
+  int64_t rowlast = 0;
+  int64_t colnext = 0;
+  int64_t collast = 0;
 
-  // Process column messages
-  void process0(pkg_topo_t pkg_ptr, int sender_rank) {
+  // Total number of rows and columns to be processed
+  int64_t total_r_and_c = 0;
+  int64_t r_and_c_done = 0;
+
+  // Process messages
+  void process(pkg_topo_t pkg_ptr, int sender_rank) {
     if (pkg_ptr.row & type_mask) {
-      lcolqueue[(*collast)++] = (pkg_ptr.col)/THREADS;
-      lcolqueue_level[(*collast)-1] = pkg_ptr.level;
-      process_columns();
-    }
-  }
-
-  // Process row messages
-  void process1(pkg_topo_t pkg_ptr, int sender_rank) {
-    if (!(pkg_ptr.row & type_mask)) {
+      // Column message
+      lcolqueue[collast] = (pkg_ptr.col)/THREADS;
+      lcolqueue_level[collast++] = pkg_ptr.level;
+    } else {
+      // Row message
       lrowsum[pkg_ptr.row] -= pkg_ptr.col;
       lrowcnt[pkg_ptr.row]--;
       /* update the level for this row */
@@ -106,75 +100,67 @@ class TopoSort: public hclib::Selector<3, pkg_topo_t> {
           num_levels = pkg_ptr.level + 1;
       }
       if(lrowcnt[pkg_ptr.row] == 1){
-        lrowqueue[(*rowlast)++] = pkg_ptr.row;
-        // Send message of type 2 to process row queue
-        pkg_topo_t new_pkg;
-        send(2, new_pkg, MYTHREAD);
+        lrowqueue[rowlast++] = pkg_ptr.row;
       }
-    } else {
-      lcolqueue[(*collast)++] = (pkg_ptr.col)/THREADS;
-      lcolqueue_level[(*collast)-1] = pkg_ptr.level;
-      process_columns();
     }
+    process_queues();
   }
 
-  // Process the row queue
-  void process2(pkg_topo_t pkg_ptr, int sender_rank) {
-    while (*rownext < *rowlast) {
-      int64_t row = pkg_ptr.row = lrowqueue[(*rownext)];
-      pkg_ptr.row |= type_mask;
+  void process_queues() {
+    // Process row queue
+    while (rownext < rowlast) {
+      int64_t row = lrowqueue[rownext++];
+      pkg_topo_t pkg_ptr;
+      pkg_ptr.row = row | type_mask;
       pkg_ptr.col = lrowsum[row];
       pkg_ptr.level = level[row];
       matched_col[row] = pkg_ptr.col;
       int64_t pe = pkg_ptr.col % THREADS;
       send(0, pkg_ptr, pe);
-      (*rownext)++;
+      r_and_c_done++;
     }
-    check_termination();
-  }
 
-  // Process the column queue
-  void process_columns() {
-    while (*colnext < *collast) {
-      if (colstart == colend) {
-        if (*colnext == *collast) { break; }
-        curr_col = lcolqueue[(*colnext)];
-        col_level = lcolqueue_level[(*colnext)++];
-        colstart = tmat->loffset[curr_col];
-        colend = tmat->loffset[curr_col + 1];
-        if (colstart == colend) {
-          continue;
-        }
-      }
-      if (colstart < colend) {
-        row = tmat->lnonzero[colstart];
+    // Process column queue
+    while (colnext < collast) {
+      int64_t curr_col = lcolqueue[colnext];
+      int64_t col_level = lcolqueue_level[colnext++];
+      int64_t colstart = tmat->loffset[curr_col];
+      int64_t colend = tmat->loffset[curr_col + 1];
+      for (int64_t idx = colstart; idx < colend; idx++) {
+        int64_t row = tmat->lnonzero[idx];
         pkg_topo_t pkg_ptr;
-        pkg_ptr.row = row/THREADS;
-        pkg_ptr.col = curr_col*THREADS + MYTHREAD;
+        pkg_ptr.row = row / THREADS;
+        pkg_ptr.col = curr_col * THREADS + MYTHREAD;
         pkg_ptr.level = col_level;
-        pe = row % THREADS;
-        send(1, pkg_ptr, pe);
-        colstart++;
+        int64_t pe = row % THREADS;
+        send(0, pkg_ptr, pe);
       }
+      r_and_c_done++;
     }
     check_termination();
   }
 
   void check_termination() {
-    if (*rownext >= *rowlast && *colnext >= *collast) {
+    if (r_and_c_done == total_r_and_c) {
       initiate_global_done();
     }
   }
 
 public:
-
-  TopoSort(sparsemat_t *tmat, int64_t *lrowqueue, int64_t *lrowsum, int64_t *lcolqueue, int64_t *lcolqueue_level, int64_t *lrowcnt, int64_t *level, int64_t *matched_col, int64_t *rownext, int64_t *rowlast, int64_t *colnext, int64_t *collast, int64_t lnr, int64_t lnc)
-  : tmat(tmat), lrowqueue(lrowqueue), lrowsum(lrowsum), lcolqueue(lcolqueue), lcolqueue_level(lcolqueue_level), lrowcnt(lrowcnt), level(level), matched_col(matched_col), rownext(rownext), rowlast(rowlast), colnext(colnext), collast(collast), lnr(lnr), lnc(lnc) {
-    mb[0].process = [this](pkg_topo_t pkg, int sender_rank) { this->process0(pkg, sender_rank); };
-    mb[1].process = [this](pkg_topo_t pkg, int sender_rank) { this->process1(pkg, sender_rank); };
-    mb[2].process = [this](pkg_topo_t pkg, int sender_rank) { this->process2(pkg, sender_rank); };
+  TopoSort(sparsemat_t *tmat, int64_t *lrowqueue, int64_t *lrowsum, int64_t *lcolqueue, int64_t *lcolqueue_level, int64_t *lrowcnt, int64_t *level, int64_t *matched_col, int64_t lnr, int64_t lnc, int64_t initial_rowlast)
+  : tmat(tmat), lrowqueue(lrowqueue), lrowsum(lrowsum), lcolqueue(lcolqueue), lcolqueue_level(lcolqueue_level), lrowcnt(lrowcnt), level(level), matched_col(matched_col), lnr(lnr), lnc(lnc), rowlast(initial_rowlast) {
+    mb[0].process = [this](pkg_topo_t pkg, int sender_rank) { this->process(pkg, sender_rank); };
+    total_r_and_c = lnr + lnc;
   }
+
   int64_t getNumLevels() { return num_levels; }
+
+  void start_processing() {
+    process_queues();
+    if (rownext >= rowlast && colnext >= collast && r_and_c_done == total_r_and_c) {
+      initiate_global_done();
+    }
+  }
 };
 
 class TopoSortCPerm: public hclib::Selector<1, pkg_cperm_t> {
@@ -193,8 +179,14 @@ public:
 double toposort_matrix_selector(SHARED int64_t *rperm, SHARED int64_t *cperm, sparsemat_t *mat, sparsemat_t *tmat) {
   int64_t nr = mat->numrows;
   int64_t nc = mat->numcols;
-  int64_t lnr = mat->lnumrows; // Number of local rows
-  int64_t lnc = tmat->lnumrows; // Number of local columns (transpose)
+
+  // Initialize lnr and lnc to zero
+  int64_t lnr = 0;
+  int64_t lnc = 0;
+
+  // Compute lnr and lnc appropriately
+  lnr = (nr + THREADS - MYTHREAD - 1)/THREADS;
+  lnc = (nc + THREADS - MYTHREAD - 1)/THREADS;
 
   int64_t * lrperm = lgp_local_part(int64_t, rperm);
   int64_t * lcperm = lgp_local_part(int64_t, cperm);
@@ -208,14 +200,13 @@ double toposort_matrix_selector(SHARED int64_t *rperm, SHARED int64_t *cperm, sp
   int64_t * level      = (int64_t*)calloc(lnr, sizeof(int64_t));
   int64_t * matched_col= (int64_t*)calloc(lnr, sizeof(int64_t));
 
-  int64_t rownext = 0, rowlast = 0;
-  int64_t colnext = 0, collast = 0;
+  int64_t initial_rowlast = 0;
 
   for(int64_t i = 0; i < lnr; i++){
     lrowsum[i] = 0L;
     lrowcnt[i] = mat->loffset[i+1] - mat->loffset[i];
     if(lrowcnt[i] == 1){
-      lrowqueue[rowlast++] = i;
+      lrowqueue[initial_rowlast++] = i;
       level[i] = 0;
     }
     for(int64_t j = mat->loffset[i]; j < mat->loffset[i+1]; j++)
@@ -223,7 +214,7 @@ double toposort_matrix_selector(SHARED int64_t *rperm, SHARED int64_t *cperm, sp
   }
 
   int64_t num_levels = 0;
-  TopoSort *topo = new TopoSort(tmat, lrowqueue, lrowsum, lcolqueue, lcolqueue_level, lrowcnt, level, matched_col, &rownext, &rowlast, &colnext, &collast, lnr, lnc);
+  TopoSort *topo = new TopoSort(tmat, lrowqueue, lrowsum, lcolqueue, lcolqueue_level, lrowcnt, level, matched_col, lnr, lnc, initial_rowlast);
 
   lgp_barrier();
 
@@ -232,13 +223,7 @@ double toposort_matrix_selector(SHARED int64_t *rperm, SHARED int64_t *cperm, sp
   // Start the selector
   hclib::finish([=]() {
     topo->start();
-    if (rowlast > 0) {
-      pkg_topo_t pkg;
-      topo->send(2, pkg, MYTHREAD);
-    } else {
-      // If no initial rows with degree one, initiate global termination
-      topo->initiate_global_done();
-    }
+    topo->start_processing();
   });
 
   num_levels = topo->getNumLevels();
@@ -249,7 +234,7 @@ double toposort_matrix_selector(SHARED int64_t *rperm, SHARED int64_t *cperm, sp
      We need to create cperm and rperm from this information */
   num_levels = lgp_reduce_max_l(num_levels);
 
-  // Allocate level_sizes and level_start in symmetric memory
+  // Allocate level_sizes and level_start
   int64_t * level_sizes = (int64_t*)calloc(num_levels, sizeof(int64_t));
   int64_t * level_start = (int64_t*)calloc(num_levels, sizeof(int64_t));
 
@@ -311,10 +296,8 @@ double toposort_matrix_selector(SHARED int64_t *rperm, SHARED int64_t *cperm, sp
   free(lcolqueue_level);
   free(level);
   free(matched_col);
-
-  // Free symmetric arrays allocated with lgp_all_alloc()
-  lgp_all_free(level_sizes);
-  lgp_all_free(level_start);
+  free(level_sizes);
+  free(level_start);
 
   return(stat->avg);
 }
@@ -414,7 +397,7 @@ topo [-h][-b count][-M mask][-n num][-f filename][-Z num][-e prob][-D]\n\
 }
 
 /*! \brief check the result of toposort
- *
+
  * Check that the permutations are in fact permutations and that applying
  * them to the original matrix yields an upper triangular matrix
  * \param mat the original matrix
