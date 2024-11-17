@@ -70,8 +70,8 @@ class TopoSort: public hclib::Selector<1, pkg_topo_t> {
   int64_t num_levels = 0;
   uint64_t type_mask = 0x8000000000000000;
 
-  int64_t lnr;
-  int64_t lnc;
+  int64_t lnr = 0;
+  int64_t lnc = 0;
 
   // Variables for processing queues
   int64_t rownext = 0;
