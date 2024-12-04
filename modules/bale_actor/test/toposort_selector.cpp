@@ -106,6 +106,7 @@ class TopoSort: public hclib::Selector<1, pkg_topo_t> {
     process_queues();
   }
 
+  // Avoid while loops for row and column processing queues
   void process_queues() {
     // Process row queue
     while (rownext < rowlast) {
@@ -118,6 +119,7 @@ class TopoSort: public hclib::Selector<1, pkg_topo_t> {
       int64_t pe = pkg_ptr.col % THREADS;
       send(0, pkg_ptr, pe);
       r_and_c_done++;
+      check_termination();
     }
 
     // Process column queue
@@ -136,6 +138,7 @@ class TopoSort: public hclib::Selector<1, pkg_topo_t> {
         send(0, pkg_ptr, pe);
       }
       r_and_c_done++;
+      check_termination();
     }
     check_termination();
   }
