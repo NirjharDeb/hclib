@@ -115,6 +115,8 @@ class TopoSort : public hclib::Selector<1, pkg_topo_t> {
   }
 
   void check_termination() {
+    // Termination condition is not correct
+    // Initiate global done assumes that we can still send off messages and receive them
     if (r_and_c_done == total_r_and_c) {
       initiate_global_done(); //If I change this to done(0), the behavior is deterministic and successful
     }
