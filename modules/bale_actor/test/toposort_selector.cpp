@@ -116,7 +116,7 @@ class TopoSort : public hclib::Selector<1, pkg_topo_t> {
 
   void check_termination() {
     if (r_and_c_done == total_r_and_c) {
-      initiate_global_done();
+      initiate_global_done(); //If I change this to done(0), the behavior is deterministic and successful
     }
   }
 
