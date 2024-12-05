@@ -57,90 +57,61 @@ typedef struct pkg_cperm_t {
   int64_t col;
 } pkg_cperm_t;
 
-class TopoSort: public hclib::Selector<1, pkg_topo_t> {
+class TopoSort : public hclib::Selector<1, pkg_topo_t> {
   sparsemat_t *tmat;
-  int64_t *lrowqueue;
   int64_t *lrowsum;
-  int64_t *lcolqueue;
-  int64_t *lcolqueue_level;
-
   int64_t *lrowcnt;
   int64_t *level;
   int64_t *matched_col;
   int64_t num_levels = 0;
   uint64_t type_mask = 0x8000000000000000;
-
   int64_t lnr = 0;
   int64_t lnc = 0;
-
-  // Variables for processing queues
-  int64_t rownext = 0;
-  int64_t rowlast = 0;
-  int64_t colnext = 0;
-  int64_t collast = 0;
-
-  // Total number of rows and columns to be processed
   int64_t total_r_and_c = 0;
-  int64_t r_and_c_done = 0;
+  int64_t r_and_c_done;
 
-  // Process messages
   void process(pkg_topo_t pkg_ptr, int sender_rank) {
     if (pkg_ptr.row & type_mask) {
       // Column message
-      lcolqueue[collast] = (pkg_ptr.col)/THREADS;
-      lcolqueue_level[collast++] = pkg_ptr.level;
+      int64_t curr_col = (pkg_ptr.col) / THREADS;
+      int64_t col_level = pkg_ptr.level;
+      pkg_topo_t new_pkg;
+
+      // Modified to process column loop as a "for" loop rather than a "while" loop
+      for (int64_t idx = tmat->loffset[curr_col]; idx < tmat->loffset[curr_col + 1]; idx++) {
+        int64_t row = tmat->lnonzero[idx];
+        new_pkg.row = row / THREADS;
+        new_pkg.col = curr_col * THREADS + MYTHREAD;
+        new_pkg.level = col_level;
+        int64_t pe = row % THREADS;
+        send(0, new_pkg, pe);
+      }
+      r_and_c_done++;
+      check_termination();
     } else {
       // Row message
       lrowsum[pkg_ptr.row] -= pkg_ptr.col;
       lrowcnt[pkg_ptr.row]--;
-      /* update the level for this row */
-      if(pkg_ptr.level >= level[pkg_ptr.row]){
+      if (pkg_ptr.level >= level[pkg_ptr.row]) {
         level[pkg_ptr.row] = pkg_ptr.level + 1;
-        if((pkg_ptr.level+1) > num_levels)
+        if ((pkg_ptr.level + 1) > num_levels)
           num_levels = pkg_ptr.level + 1;
       }
-      if(lrowcnt[pkg_ptr.row] == 1){
-        lrowqueue[rowlast++] = pkg_ptr.row;
+
+      // One-degree row
+      if (lrowcnt[pkg_ptr.row] == 1) {
+        pkg_topo_t new_pkg;
+        int64_t row = pkg_ptr.row;
+        new_pkg.row = row | type_mask;
+        new_pkg.col = lrowsum[row];
+        new_pkg.level = level[row];
+        matched_col[row] = new_pkg.col;
+        int64_t pe = new_pkg.col % THREADS;
+        send(0, new_pkg, pe);
+        r_and_c_done++;
+        check_termination();
       }
     }
-    process_queues();
-  }
-
-  // Avoid while loops for row and column processing queues
-  void process_queues() {
-    // Process row queue
-    while (rownext < rowlast) {
-      int64_t row = lrowqueue[rownext++];
-      pkg_topo_t pkg_ptr;
-      pkg_ptr.row = row | type_mask;
-      pkg_ptr.col = lrowsum[row];
-      pkg_ptr.level = level[row];
-      matched_col[row] = pkg_ptr.col;
-      int64_t pe = pkg_ptr.col % THREADS;
-      send(0, pkg_ptr, pe);
-      r_and_c_done++;
-      check_termination();
-    }
-
-    // Process column queue
-    while (colnext < collast) {
-      int64_t curr_col = lcolqueue[colnext];
-      int64_t col_level = lcolqueue_level[colnext++];
-      int64_t colstart = tmat->loffset[curr_col];
-      int64_t colend = tmat->loffset[curr_col + 1];
-      for (int64_t idx = colstart; idx < colend; idx++) {
-        int64_t row = tmat->lnonzero[idx];
-        pkg_topo_t pkg_ptr;
-        pkg_ptr.row = row / THREADS;
-        pkg_ptr.col = curr_col * THREADS + MYTHREAD;
-        pkg_ptr.level = col_level;
-        int64_t pe = row % THREADS;
-        send(0, pkg_ptr, pe);
-      }
-      r_and_c_done++;
-      check_termination();
-    }
-    check_termination();
   }
 
   void check_termination() {
@@ -150,20 +121,13 @@ class TopoSort: public hclib::Selector<1, pkg_topo_t> {
   }
 
 public:
-  TopoSort(sparsemat_t *tmat, int64_t *lrowqueue, int64_t *lrowsum, int64_t *lcolqueue, int64_t *lcolqueue_level, int64_t *lrowcnt, int64_t *level, int64_t *matched_col, int64_t lnr, int64_t lnc, int64_t initial_rowlast)
-  : tmat(tmat), lrowqueue(lrowqueue), lrowsum(lrowsum), lcolqueue(lcolqueue), lcolqueue_level(lcolqueue_level), lrowcnt(lrowcnt), level(level), matched_col(matched_col), lnr(lnr), lnc(lnc), rowlast(initial_rowlast) {
+  TopoSort(sparsemat_t *tmat, int64_t *lrowsum, int64_t *lrowcnt, int64_t *level, int64_t *matched_col, int64_t lnr, int64_t lnc, int64_t initial_rowlast)
+      : tmat(tmat), lrowsum(lrowsum), lrowcnt(lrowcnt), level(level), matched_col(matched_col), lnr(lnr), lnc(lnc), r_and_c_done(initial_rowlast) {
     mb[0].process = [this](pkg_topo_t pkg, int sender_rank) { this->process(pkg, sender_rank); };
     total_r_and_c = lnr + lnc;
   }
 
   int64_t getNumLevels() { return num_levels; }
-
-  void start_processing() {
-    process_queues();
-    if (rownext >= rowlast && colnext >= collast && r_and_c_done == total_r_and_c) {
-      initiate_global_done();
-    }
-  }
 };
 
 class TopoSortCPerm: public hclib::Selector<1, pkg_cperm_t> {
@@ -205,7 +169,7 @@ double toposort_matrix_selector(SHARED int64_t *rperm, SHARED int64_t *cperm, sp
 
   int64_t initial_rowlast = 0;
 
-  for(int64_t i = 0; i < lnr; i++){
+  for(int64_t i = 0; i < mat->lnumrows; i++){
     lrowsum[i] = 0L;
     lrowcnt[i] = mat->loffset[i+1] - mat->loffset[i];
     if(lrowcnt[i] == 1){
@@ -217,16 +181,26 @@ double toposort_matrix_selector(SHARED int64_t *rperm, SHARED int64_t *cperm, sp
   }
 
   int64_t num_levels = 0;
-  TopoSort *topo = new TopoSort(tmat, lrowqueue, lrowsum, lcolqueue, lcolqueue_level, lrowcnt, level, matched_col, lnr, lnc, initial_rowlast);
+  TopoSort *topo = new TopoSort(tmat, lrowsum, lrowcnt, level, matched_col, lnr, lnc, initial_rowlast);
 
   lgp_barrier();
 
   double t1 = wall_seconds();
 
-  // Start the selector
-  hclib::finish([=]() {
+  // Start the selector and send initial messages
+  hclib::finish([=, &initial_rowlast]() {
     topo->start();
-    topo->start_processing();
+    pkg_topo_t pkg_ptr;
+    int64_t row, pe;
+    for (int64_t i = 0; i < initial_rowlast; i++) {
+      row = pkg_ptr.row = lrowqueue[i];
+      pkg_ptr.row |= type_mask;
+      pkg_ptr.col = lrowsum[row];
+      pkg_ptr.level = level[row];
+      matched_col[row] = pkg_ptr.col;
+      pe = pkg_ptr.col % THREADS;
+      topo->send(0, pkg_ptr, pe);
+    }
   });
 
   num_levels = topo->getNumLevels();
