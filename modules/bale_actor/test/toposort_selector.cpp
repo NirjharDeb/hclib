@@ -46,6 +46,69 @@ extern "C" {
 #include <std_options.h>
 #include "selector.h"
 
+//////////////////////////////////////////////////////////////////////////////////////
+// Debugging module
+#include <fstream>
+#include <iostream>
+#include <string>
+#include <bits/stdc++.h>
+
+#define THREADS shmem_n_pes()
+#define MYTHREAD shmem_my_pe()
+
+using namespace std;
+
+// Helper function to extract the file name without path or extension
+string extractFileName(const string& full_path) {
+    size_t last_slash = full_path.find_last_of("/\\");
+    size_t last_dot = full_path.find_last_of(".");
+    string file_name = full_path.substr(
+        (last_slash == string::npos ? 0 : last_slash + 1), 
+        (last_dot == string::npos ? string::npos : last_dot - last_slash - 1));
+    return file_name;
+}
+
+// Delete a folder (if it exists) and recreate it
+void resetFolder(string folder_name) {
+  int folderRemoval = system(("rm -rf " + folder_name).c_str());
+  if (folderRemoval) {
+    printf("Failed to delete folder.\n");
+  }
+  int folderCreation = system(("mkdir " + folder_name).c_str());
+  if (folderCreation) {
+    printf("Failed to create folder.\n");
+  }
+}
+
+// Print out value of variable to a new file titled "variable_name.txt" in toposort_outputs folder
+void outVariableToNewFile(string name, int64_t value, int lineNumber) {
+  static const string folder_name = extractFileName(__FILE__) + "_outputs";
+  int pe = MYTHREAD;
+
+  //Track number of times this method has been called across all PEs
+  static unsigned int call_count = 0;
+  call_count++;
+
+  //If PE is 0 and this is the first call to method, reset the toposort_outputs folder
+  if (call_count == 1 && pe == 0) {
+    resetFolder(folder_name);
+  }
+
+  string file_name = folder_name + "/" + name + "[" + to_string(pe) + "].txt";
+
+  ofstream output_file(file_name, ios::app);
+
+  if (output_file.is_open()) {
+    string new_line = "PE[" + to_string(pe) + "] [" + name + "][" + to_string(lineNumber) + "] " + to_string(value);
+    output_file << new_line << endl;
+    output_file.close();
+  } else {
+    printf(("Failed to write " + name + " to output file.\n").c_str());
+  }
+}
+
+//////////////////////////////////////////////////////////////////////////////////////
+
 typedef struct pkg_topo_t {
   int64_t row;
   int64_t col;
@@ -117,6 +180,7 @@ class TopoSort : public hclib::Selector<1, pkg_topo_t> {
   void check_termination() {
     // Termination condition is not correct
     // Initiate global done assumes that we can still send off messages and receive them
+    outVariableToNewFile("r_and_c_done", r_and_c_done, __LINE__);
     if (r_and_c_done == total_r_and_c) {
       initiate_global_done(); //If I change this to done(0), the behavior is deterministic and successful
     }
@@ -209,6 +273,7 @@ double toposort_matrix_selector(SHARED int64_t *rperm, SHARED int64_t *cperm, sp
   delete topo;
 
   num_levels++;
+  outVariableToNewFile("num_levels", num_levels, __LINE__);
   /* At this point, we know for each row its level and the column it was matched with.
      We need to create cperm and rperm from this information */
   num_levels = lgp_reduce_max_l(num_levels);
