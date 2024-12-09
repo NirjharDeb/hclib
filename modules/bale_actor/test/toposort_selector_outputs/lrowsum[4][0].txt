@@ -8,3 +8,8 @@ PE[0] [lrowsum[4]][152] 17
 PE[0] [lrowsum[4]][152] 17
 PE[0] [lrowsum[4]][152] 8
 PE[0] [lrowsum[4]][152] 0
+PE[0] [lrowsum[4]][152] 23
+PE[0] [lrowsum[4]][152] 17
+PE[0] [lrowsum[4]][152] 17
+PE[0] [lrowsum[4]][152] 8
+PE[0] [lrowsum[4]][152] 0

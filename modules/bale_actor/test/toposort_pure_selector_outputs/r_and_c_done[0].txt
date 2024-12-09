@@ -31,3 +31,14 @@ PE[0] [r_and_c_done][192] 7
 PE[0] [r_and_c_done][157] 8
 PE[0] [r_and_c_done][192] 9
 PE[0] [r_and_c_done][157] 10
+PE[0] [r_and_c_done][248] 0
+PE[0] [r_and_c_done][153] 1
+PE[0] [r_and_c_done][188] 2
+PE[0] [r_and_c_done][153] 3
+PE[0] [r_and_c_done][188] 4
+PE[0] [r_and_c_done][153] 5
+PE[0] [r_and_c_done][188] 6
+PE[0] [r_and_c_done][188] 7
+PE[0] [r_and_c_done][153] 8
+PE[0] [r_and_c_done][188] 9
+PE[0] [r_and_c_done][153] 10

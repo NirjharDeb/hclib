@@ -13,3 +13,11 @@ PE[1] [lrowsum[0]][152] 12
 PE[1] [lrowsum[0]][152] 5
 PE[1] [lrowsum[0]][152] 3
 PE[1] [lrowsum[0]][152] 0
+PE[1] [lrowsum[0]][152] 35
+PE[1] [lrowsum[0]][152] 29
+PE[1] [lrowsum[0]][152] 29
+PE[1] [lrowsum[0]][152] 20
+PE[1] [lrowsum[0]][152] 12
+PE[1] [lrowsum[0]][152] 5
+PE[1] [lrowsum[0]][152] 3
+PE[1] [lrowsum[0]][152] 0

@@ -10,3 +10,9 @@ PE[0] [lrowsum[0]][152] 24
 PE[0] [lrowsum[0]][152] 15
 PE[0] [lrowsum[0]][152] 7
 PE[0] [lrowsum[0]][152] 0
+PE[0] [lrowsum[0]][152] 30
+PE[0] [lrowsum[0]][152] 24
+PE[0] [lrowsum[0]][152] 24
+PE[0] [lrowsum[0]][152] 15
+PE[0] [lrowsum[0]][152] 7
+PE[0] [lrowsum[0]][152] 0

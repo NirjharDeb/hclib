@@ -12,3 +12,10 @@ PE[0] [lrowsum[1]][152] 17
 PE[0] [lrowsum[1]][152] 9
 PE[0] [lrowsum[1]][152] 2
 PE[0] [lrowsum[1]][152] 0
+PE[0] [lrowsum[1]][152] 32
+PE[0] [lrowsum[1]][152] 26
+PE[0] [lrowsum[1]][152] 26
+PE[0] [lrowsum[1]][152] 17
+PE[0] [lrowsum[1]][152] 9
+PE[0] [lrowsum[1]][152] 2
+PE[0] [lrowsum[1]][152] 0

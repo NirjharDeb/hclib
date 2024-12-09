@@ -25,3 +25,12 @@ PE[0] [lrowsum[3]][164] 9
 PE[0] [lrowsum[3]][164] 7
 PE[0] [lrowsum[3]][164] 4
 PE[0] [lrowsum[3]][164] 0
+PE[0] [lrowsum[3]][160] 39
+PE[0] [lrowsum[3]][160] 33
+PE[0] [lrowsum[3]][160] 33
+PE[0] [lrowsum[3]][160] 24
+PE[0] [lrowsum[3]][160] 16
+PE[0] [lrowsum[3]][160] 9
+PE[0] [lrowsum[3]][160] 7
+PE[0] [lrowsum[3]][160] 4
+PE[0] [lrowsum[3]][160] 0

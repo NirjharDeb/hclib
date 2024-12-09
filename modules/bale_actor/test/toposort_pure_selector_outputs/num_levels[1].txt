@@ -27,3 +27,13 @@ PE[1] [num_levels][175] 6
 PE[1] [num_levels][175] 7
 PE[1] [num_levels][175] 8
 PE[1] [num_levels][279] 9
+PE[1] [num_levels][251] 0
+PE[1] [num_levels][171] 1
+PE[1] [num_levels][171] 2
+PE[1] [num_levels][171] 3
+PE[1] [num_levels][171] 4
+PE[1] [num_levels][171] 5
+PE[1] [num_levels][171] 6
+PE[1] [num_levels][171] 7
+PE[1] [num_levels][171] 8
+PE[1] [num_levels][275] 9

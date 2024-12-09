@@ -10,3 +10,7 @@ PE[1] [lrowsum[4]][164] 15
 PE[1] [lrowsum[4]][164] 9
 PE[1] [lrowsum[4]][164] 9
 PE[1] [lrowsum[4]][164] 0
+PE[1] [lrowsum[4]][160] 15
+PE[1] [lrowsum[4]][160] 9
+PE[1] [lrowsum[4]][160] 9
+PE[1] [lrowsum[4]][160] 0

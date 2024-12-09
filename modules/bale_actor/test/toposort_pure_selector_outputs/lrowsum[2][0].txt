@@ -7,3 +7,6 @@ PE[0] [lrowsum[2]][164] 0
 PE[0] [lrowsum[2]][164] 6
 PE[0] [lrowsum[2]][164] 0
 PE[0] [lrowsum[2]][164] 0
+PE[0] [lrowsum[2]][160] 6
+PE[0] [lrowsum[2]][160] 0
+PE[0] [lrowsum[2]][160] 0
