@@ -1,3 +1,0 @@
-PE[1] [matched_col[0]][178] 3
-PE[1] [matched_col[0]][172] 3
-PE[1] [matched_col[0]][172] 3
