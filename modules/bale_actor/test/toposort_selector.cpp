@@ -69,42 +69,48 @@ string extractFileName(const string& full_path) {
     return file_name;
 }
 
-// Delete a folder (if it exists) and recreate it
-void resetFolder(string folder_name) {
-  int folderRemoval = system(("rm -rf " + folder_name).c_str());
-  if (folderRemoval) {
-    printf("Failed to delete folder.\n");
-  }
-  int folderCreation = system(("mkdir " + folder_name).c_str());
-  if (folderCreation) {
-    printf("Failed to create folder.\n");
-  }
-}
-
-// Print out value of variable to a new file titled "variable_name.txt" in toposort_outputs folder
-void outVariableToNewFile(string name, int64_t value, int lineNumber) {
+// Print out value of variable to a new file
+void outVariableToNewFile(const string &name, int64_t value, int lineNumber) {
   static const string folder_name = extractFileName(__FILE__) + "_outputs";
   int pe = MYTHREAD;
 
-  //Track number of times this method has been called across all PEs
-  static unsigned int call_count = 0;
-  call_count++;
+  // Track the number of times this method is called in total (across all PEs)
+  // We'll manage folder creation only on PE 0.
+  static bool first_call_done = false;
 
-  //If PE is 0 and this is the first call to method, reset the toposort_outputs folder
-  if (call_count == 1 && pe == 0) {
-    resetFolder(folder_name);
+  // If this is the first call *on any PE*, we want to ensure PE 0 resets the folder.
+  // To synchronize this correctly, we can do the following:
+  if (!first_call_done) {
+    // Use an atomic operation or barrier to ensure only PE 0 does folder reset.
+    // We'll just rely on a simple check of pe == 0 here:
+    if (pe == 0) {
+      int folderRemoval = system(("rm -rf " + folder_name).c_str());
+      if (folderRemoval != 0) {
+        printf("Warning (PE 0): Unable to remove folder %s.\n", folder_name.c_str());
+      }
+
+      int folderCreation = system(("mkdir " + folder_name).c_str());
+      if (folderCreation != 0) {
+        printf("Warning (PE 0): Unable to create folder %s.\n", folder_name.c_str());
+      }
+    }
+
+    // Ensure all PEs wait until PE 0 finishes
+    shmem_barrier_all();
+
+    // Now set the flag for all PEs
+    first_call_done = true;
   }
 
   string file_name = folder_name + "/" + name + "[" + to_string(pe) + "].txt";
 
   ofstream output_file(file_name, ios::app);
-
   if (output_file.is_open()) {
     string new_line = "PE[" + to_string(pe) + "] [" + name + "][" + to_string(lineNumber) + "] " + to_string(value);
     output_file << new_line << endl;
     output_file.close();
   } else {
-    printf(("Failed to write " + name + " to output file.\n").c_str());
+    printf("Failed to write %s to output file.\n", name.c_str());
   }
 }
 
@@ -141,7 +147,6 @@ class TopoSort : public hclib::Selector<1, pkg_topo_t> {
       int64_t col_level = pkg_ptr.level;
       pkg_topo_t new_pkg;
 
-      // Modified to process column loop as a "for" loop rather than a "while" loop
       for (int64_t idx = tmat->loffset[curr_col]; idx < tmat->loffset[curr_col + 1]; idx++) {
         int64_t row = tmat->lnonzero[idx];
         new_pkg.row = row / THREADS;
@@ -151,13 +156,19 @@ class TopoSort : public hclib::Selector<1, pkg_topo_t> {
         send(0, new_pkg, pe);
       }
       r_and_c_done++;
+      OUTVAR(r_and_c_done); // Print after update
       check_termination();
     } else {
       // Row message
       lrowsum[pkg_ptr.row] -= pkg_ptr.col;
+      outVariableToNewFile("lrowsum[" + to_string(pkg_ptr.row) + "]", lrowsum[pkg_ptr.row], __LINE__);
+
       lrowcnt[pkg_ptr.row]--;
+      outVariableToNewFile("lrowcnt[" + to_string(pkg_ptr.row) + "]", lrowcnt[pkg_ptr.row], __LINE__);
+
       if (pkg_ptr.level >= level[pkg_ptr.row]) {
         level[pkg_ptr.row] = pkg_ptr.level + 1;
+        outVariableToNewFile("level[" + to_string(pkg_ptr.row) + "]", level[pkg_ptr.row], __LINE__);
         if ((pkg_ptr.level + 1) > num_levels)
           num_levels = pkg_ptr.level + 1;
       }
@@ -170,20 +181,20 @@ class TopoSort : public hclib::Selector<1, pkg_topo_t> {
         new_pkg.col = lrowsum[row];
         new_pkg.level = level[row];
         matched_col[row] = new_pkg.col;
+        outVariableToNewFile("matched_col[" + to_string(row) + "]", matched_col[row], __LINE__);
         int64_t pe = new_pkg.col % THREADS;
         send(0, new_pkg, pe);
         r_and_c_done++;
+        OUTVAR(r_and_c_done); // Print after update
         check_termination();
       }
     }
   }
 
   void check_termination() {
-    // Termination condition is not correct
-    // Initiate global done assumes that we can still send off messages and receive them
     OUTVAR(r_and_c_done);
     if (r_and_c_done == total_r_and_c) {
-      initiate_global_done(); //If I change this to done(0), the behavior is deterministic and successful
+      initiate_global_done();
     }
   }
 
@@ -202,6 +213,8 @@ class TopoSortCPerm: public hclib::Selector<1, pkg_cperm_t> {
 
   void process(pkg_cperm_t pkg, int sender_rank) {
     lcperm[pkg.col/THREADS] = pkg.pos;
+    // Potentially add OUTVAR here if needed, but lcperm is also indexed.
+    // outVariableToNewFile("lcperm[" + to_string(pkg.col/THREADS) + "]", lcperm[pkg.col/THREADS], __LINE__);
   }
 
 public:
@@ -265,6 +278,7 @@ double toposort_matrix_selector(SHARED int64_t *rperm, SHARED int64_t *cperm, sp
       pkg_ptr.col = lrowsum[row];
       pkg_ptr.level = level[row];
       matched_col[row] = pkg_ptr.col;
+      outVariableToNewFile("matched_col[" + to_string(row) + "]", matched_col[row], __LINE__);
       pe = pkg_ptr.col % THREADS;
       topo->send(0, pkg_ptr, pe);
     }
@@ -286,6 +300,8 @@ double toposort_matrix_selector(SHARED int64_t *rperm, SHARED int64_t *cperm, sp
   // Count level sizes locally
   for(int64_t i = 0; i < lnr; i++){
     level_sizes[level[i]]++;
+    // If needed, we can print these updates as well:
+    // outVariableToNewFile("level[" + to_string(i) + "]", level[i], __LINE__);
   }
 
   // Compute level_start and total sizes using SHMEM operations
@@ -321,6 +337,7 @@ double toposort_matrix_selector(SHARED int64_t *rperm, SHARED int64_t *cperm, sp
       pkg.pos = lrperm[i];
       pkg.col = matched_col[i];
       int64_t pe  = pkg.col % THREADS;
+      // We could also print matched_col[i] values here if needed
       topocperm->send(0, pkg, pe);
     }
     topocperm->done(0);
@@ -415,14 +432,14 @@ We handle this with levels and atomic memory operations.
 
 Usage:
 topo [-h][-b count][-M mask][-n num][-f filename][-Z num][-e prob][-D]
-- -h prints this help message
-- -b count is the number of packages in an exstack(2) buffer
-- -M mask is the or of 1,2,4,8,16 for the models: agi, exstack, exstack2, conveyor, alternate
-- -n num is the number of rows per thread
-- -f filename read the input matrix from filename (in Matrix Market format)
-- -Z num use an Erdos Renyi matrix with num being the expected number of nonzeros in a row
-- -e prob use an Erdos Renyi matrix where prob is the probability of an entry in matrix being non-zero
-- -D debugging flag that dumps out input and output files.
+ -h prints this help message
+ -b count is the number of packages in an exstack(2) buffer
+ -M mask is the or of 1,2,4,8,16 for the models: agi, exstack, exstack2, conveyor, alternate
+ -n num is the number of rows per thread
+ -f filename read the input matrix from filename (in Matrix Market format)
+ -Z num use an Erdos Renyi matrix with num being the expected number of nonzeros in a row
+ -e prob use an Erdos Renyi matrix where prob is the probability of an entry in matrix being non-zero
+ -D debugging flag that dumps out input and output files.
 */
 
 static void usage(void) {
