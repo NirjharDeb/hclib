@@ -87,10 +87,11 @@ void setupOutputDirectory() {
     }
 }
 
-// Print out value of variable to a new file titled "<variable_name>[pe].txt" in the folder
+// Print out value of variable to a new file titled "var_<variable_name>_pe<pe>.txt" in the folder
 void outVariableToNewFile(const string &name, int64_t value, int lineNumber) {
     int pe = MYTHREAD;
-    string file_name = folder_name + "/" + name + "[" + to_string(pe) + "].txt";
+    // The file name is now prefixed with "var_" and suffixed with "_pe<pe>" to avoid confusion.
+    string file_name = folder_name + "/var_" + name + "_pe" + to_string(pe) + ".txt";
 
     ofstream output_file(file_name, ios::app);
     if (output_file.is_open()) {
