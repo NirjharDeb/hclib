@@ -46,6 +46,62 @@ extern "C" {
 #include <std_options.h>
 #include "selector.h"
 
+// Debugging module
+#include <fstream>
+#include <iostream>
+#include <string>
+#include <bits/stdc++.h>
+
+#define THREADS shmem_n_pes()
+#define MYTHREAD shmem_my_pe()
+#define OUTVAR(var) outVariableToNewFile(#var, var, __LINE__)
+
+// Helper function to extract the file name without path or extension
+static std::string extractFileName(const std::string& full_path) {
+    size_t last_slash = full_path.find_last_of("/\\");
+    size_t last_dot = full_path.find_last_of(".");
+    std::string file_name = full_path.substr(
+        (last_slash == std::string::npos ? 0 : last_slash + 1),
+        (last_dot == std::string::npos ? std::string::npos : last_dot - last_slash - 1));
+    return file_name;
+}
+
+// Print out value of variable to a new file
+static void outVariableToNewFile(const std::string &name, int64_t value, int lineNumber) {
+  static const std::string folder_name = extractFileName(__FILE__) + "_outputs";
+  int pe = MYTHREAD;
+
+  // Manage folder creation once per run (PE 0)
+  static bool first_call_done = false;
+  if (!first_call_done) {
+    if (pe == 0) {
+      int folderRemoval = system(("rm -rf " + folder_name).c_str());
+      if (folderRemoval != 0) {
+        printf("Warning (PE 0): Unable to remove folder %s.\n", folder_name.c_str());
+      }
+
+      int folderCreation = system(("mkdir " + folder_name).c_str());
+      if (folderCreation != 0) {
+        printf("Warning (PE 0): Unable to create folder %s.\n", folder_name.c_str());
+      }
+    }
+
+    shmem_barrier_all();
+    first_call_done = true;
+  }
+
+  std::string file_name = folder_name + "/" + name + "[" + std::to_string(pe) + "].txt";
+
+  std::ofstream output_file(file_name, std::ios::app);
+  if (output_file.is_open()) {
+    std::string new_line = "PE[" + std::to_string(pe) + "] [" + name + "][" + std::to_string(lineNumber) + "] " + std::to_string(value);
+    output_file << new_line << std::endl;
+    output_file.close();
+  } else {
+    printf("Failed to write %s to output file.\n", name.c_str());
+  }
+}
+
 typedef struct pkg_topo_t {
     int64_t row;
     int64_t col;
@@ -59,7 +115,8 @@ typedef struct pkg_cperm_t {
 
 class TopoSort: public hclib::Selector<1, pkg_topo_t> {
 public:
-    TopoSort(sparsemat_t *tmat, int64_t *lrowsum, int64_t *lrowcnt, int64_t *level, int64_t *matched_col, int64_t r_and_c_done, int64_t lnc, int64_t lnr): tmat(tmat), lrowsum(lrowsum), lrowcnt(lrowcnt), level(level), matched_col(matched_col), r_and_c_done(r_and_c_done), lnc(lnc), lnr(lnr) {
+    TopoSort(sparsemat_t *tmat, int64_t *lrowsum, int64_t *lrowcnt, int64_t *level, int64_t *matched_col, int64_t r_and_c_done, int64_t lnc, int64_t lnr)
+        : tmat(tmat), lrowsum(lrowsum), lrowcnt(lrowcnt), level(level), matched_col(matched_col), r_and_c_done(r_and_c_done), lnc(lnc), lnr(lnr) {
         mb[0].process = [this](pkg_topo_t pkg, int sender_rank) { this->process0(pkg, sender_rank); };
     }
     int64_t getNumLevels() { return num_levels; }
@@ -67,7 +124,6 @@ public:
 private:
     sparsemat_t *tmat;
     int64_t *lrowsum;
-
     int64_t *lrowcnt;
     int64_t *level;
     int64_t *matched_col;
@@ -80,6 +136,7 @@ private:
 
     void process0(pkg_topo_t pkg_ptr, int sender_rank) {
         if (pkg_ptr.row & type_mask) {
+            // Column message
             int64_t curr_col = (pkg_ptr.col)/THREADS;
             int64_t col_level = pkg_ptr.level;
             pkg_topo_t pkg;
@@ -92,18 +149,28 @@ private:
                 send(0, pkg, pe);
             }
             r_and_c_done++;
+            OUTVAR(r_and_c_done);
             if (r_and_c_done == (lnr+lnc)) {
                 done(0);
             }
         } else {
+            // Row message
             lrowsum[pkg_ptr.row] -= pkg_ptr.col;
+            outVariableToNewFile("lrowsum[" + std::to_string(pkg_ptr.row) + "]", lrowsum[pkg_ptr.row], __LINE__);
+
             lrowcnt[pkg_ptr.row]--;
+            outVariableToNewFile("lrowcnt[" + std::to_string(pkg_ptr.row) + "]", lrowcnt[pkg_ptr.row], __LINE__);
+
             /* update the level for this row */
             if(pkg_ptr.level >= level[pkg_ptr.row]){
                 level[pkg_ptr.row] = pkg_ptr.level + 1;
-                if((pkg_ptr.level+1) > num_levels)
+                outVariableToNewFile("level[" + std::to_string(pkg_ptr.row) + "]", level[pkg_ptr.row], __LINE__);
+                if((pkg_ptr.level+1) > num_levels) {
                     num_levels = pkg_ptr.level + 1;
+                    OUTVAR(num_levels);
+                }
             }
+
             if(lrowcnt[pkg_ptr.row] == 1){
                 // now row is a one-degree row
                 int64_t row = pkg_ptr.row;
@@ -113,9 +180,11 @@ private:
                 pkg.col = lrowsum[row];
                 pkg.level = level[row];
                 matched_col[row] = pkg.col;
+                outVariableToNewFile("matched_col[" + std::to_string(row) + "]", matched_col[row], __LINE__);
                 int64_t pe = pkg.col % THREADS;
                 send(0, pkg, pe);
                 r_and_c_done++;
+                OUTVAR(r_and_c_done);
                 if (r_and_c_done == (lnr+lnc)) {
                     done(0);
                 }
@@ -130,6 +199,8 @@ class TopoSortCPerm: public hclib::Selector<1, pkg_cperm_t> {
 
     void process(pkg_cperm_t pkg, int sender_rank) {
         lcperm[pkg.col/THREADS] = pkg.pos;
+        // If needed, we could track lcperm here too
+        // outVariableToNewFile("lcperm[" + std::to_string(pkg.col/THREADS) + "]", lcperm[pkg.col/THREADS], __LINE__);
     }
 
 public:
@@ -139,12 +210,10 @@ public:
 };
 
 double toposort_matrix_selector(SHARED int64_t *rperm, SHARED int64_t *cperm, sparsemat_t *mat, sparsemat_t *tmat) {
-    //T0_printf("Running Toposort with conveyors ...");
     int64_t nr = mat->numrows;
     int64_t nc = mat->numcols;
     int64_t lnr = (nr + THREADS - MYTHREAD - 1)/THREADS;
     int64_t lnc = (nc + THREADS - MYTHREAD - 1)/THREADS;
-    //int64_t i,j,row,col,curr_col,pe,fromth,ret, pos;
 
     int64_t * lrperm = lgp_local_part(int64_t, rperm);
     int64_t * lcperm = lgp_local_part(int64_t, cperm);
@@ -175,7 +244,11 @@ double toposort_matrix_selector(SHARED int64_t *rperm, SHARED int64_t *cperm, sp
     }
 
     int64_t r_and_c_done = rowlast;
-    int64_t num_levels = 0;
+    OUTVAR(r_and_c_done);
+
+    int64_t num_levels = 0; // we will track level updates when done
+    OUTVAR(num_levels);
+
     TopoSort *topo = new TopoSort(tmat, lrowsum, lrowcnt, level, matched_col, r_and_c_done, lnc, lnr);
 
     lgp_barrier();
@@ -190,17 +263,18 @@ double toposort_matrix_selector(SHARED int64_t *rperm, SHARED int64_t *cperm, sp
             pkg.col = lrowsum[row];
             pkg.level = level[row];
             matched_col[row] = pkg.col;
+            outVariableToNewFile("matched_col[" + std::to_string(row) + "]", matched_col[row], __LINE__);
             pe = pkg.col % THREADS;
             topo->send(0, pkg, pe);
         }
     });
 
     num_levels = topo->getNumLevels();
+    num_levels++;
+    OUTVAR(num_levels);
+
     delete topo;
 
-    num_levels++;
-    /* at this point we know for each row its level and the column it was matched with.
-       we need to create cperm and rperm from this information */
     num_levels = lgp_reduce_max_l(num_levels);
 
     int64_t * level_sizes = (int64_t*)calloc(num_levels, sizeof(int64_t));
@@ -246,6 +320,11 @@ double toposort_matrix_selector(SHARED int64_t *rperm, SHARED int64_t *cperm, sp
     free(lrowsum);
     free(lrowqueue);
     free(lcolqueue);
+    free(lcolqueue_level);
+    free(level);
+    free(matched_col);
+    free(level_sizes);
+    free(level_start);
 
     return(stat->avg);
 }
@@ -432,11 +511,6 @@ int main(int argc, char * argv[]) {
     const char *deps[] = { "system", "bale_actor" };
     hclib::launch(deps, 2, [=] {
 
-        //char hostname[1024];
-        //hostname[1023] = '\0';
-        //gethostname(hostname, 1023);
-        //printf("Hostname: %s rank: %d\n", hostname, MYTHREAD);
-
         int64_t i, j, fromth, lnnz, start, end;
         int64_t pe, row, col, idx;
         double t1;
@@ -489,7 +563,7 @@ int main(int argc, char * argv[]) {
         T0_fprintf(stderr,"Number of rows per thread      (-n)   %ld\n", l_numrows);
         T0_fprintf(stderr,"Avg # of nonzeros per row      (-Z)   %2.2lf\n", nz_per_row);
         T0_fprintf(stderr,"Erdos-Renyi edge probability   (-e)   %lf\n", erdos_renyi_prob);
-        T0_fprintf(stderr,"task mask (M) = %ld (should be 1,2,4,8,16 for agi, exstack, exstack2, conveyors, alternates\n", models_mask);
+        T0_fprintf(stderr,"task mask (M) = %ld (should be 1,2,4,8,16 for agi,exstack,exstack2,conveyor,alternates\n", models_mask);
 
         sparsemat_t * mat = generate_toposort_input(numrows, erdos_renyi_prob, rand_seed);
         if(!mat){T0_printf("ERROR: mat is NULL!\n"); exit(1);}
@@ -507,11 +581,8 @@ int main(int argc, char * argv[]) {
         SHARED int64_t *cperminv2 = (int64_t*)lgp_all_alloc(numcols, sizeof(int64_t));
         double gb_th  = (mat->numrows + mat->numcols*2 + mat->nnz*2)*8;
 
-        int64_t use_model;
-        double laptime = 0.0;
-
         T0_fprintf(stderr," Selector: \n");
-        laptime = toposort_matrix_selector(rperminv2, cperminv2, mat, tmat);
+        double laptime = toposort_matrix_selector(rperminv2, cperminv2, mat, tmat);
 
         lgp_barrier();
         T0_fprintf(stderr,"  %8.3lf seconds\n", laptime);
