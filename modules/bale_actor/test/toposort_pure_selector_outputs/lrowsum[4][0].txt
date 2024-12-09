@@ -1,0 +1,15 @@
+PE[0] [lrowsum[4]][166] 23
+PE[0] [lrowsum[4]][166] 17
+PE[0] [lrowsum[4]][166] 17
+PE[0] [lrowsum[4]][166] 8
+PE[0] [lrowsum[4]][166] 0
+PE[0] [lrowsum[4]][164] 23
+PE[0] [lrowsum[4]][164] 17
+PE[0] [lrowsum[4]][164] 17
+PE[0] [lrowsum[4]][164] 8
+PE[0] [lrowsum[4]][164] 0
+PE[0] [lrowsum[4]][164] 23
+PE[0] [lrowsum[4]][164] 17
+PE[0] [lrowsum[4]][164] 17
+PE[0] [lrowsum[4]][164] 8
+PE[0] [lrowsum[4]][164] 0

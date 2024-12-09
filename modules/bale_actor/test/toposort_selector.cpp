@@ -64,49 +64,43 @@ string extractFileName(const string& full_path) {
     size_t last_slash = full_path.find_last_of("/\\");
     size_t last_dot = full_path.find_last_of(".");
     string file_name = full_path.substr(
-        (last_slash == string::npos ? 0 : last_slash + 1), 
+        (last_slash == string::npos ? 0 : last_slash + 1),
         (last_dot == string::npos ? string::npos : last_dot - last_slash - 1));
     return file_name;
 }
 
-// Print out value of variable to a new file
-void outVariableToNewFile(const string &name, int64_t value, int lineNumber) {
-  static const string folder_name = extractFileName(__FILE__) + "_outputs";
-  int pe = MYTHREAD;
+static const string folder_name = extractFileName(__FILE__) + "_outputs";
 
-  // Track the number of times this method is called in total (across all PEs)
-  static bool first_call_done = false;
-
-  // If this is the first call on any PE
-  if (!first_call_done) {
-    // Only PE 0 will reset the folder
+// Call this function once at the start of program to remove and recreate the output directory.
+void setupOutputDirectory() {
+    int pe = MYTHREAD;
     if (pe == 0) {
-      int folderRemoval = system(("rm -rf " + folder_name).c_str());
-      if (folderRemoval != 0) {
-        printf("Warning (PE 0): Unable to remove folder %s.\n", folder_name.c_str());
-      }
+        int folderRemoval = system(("rm -rf " + folder_name).c_str());
+        if (folderRemoval != 0) {
+            printf("Warning (PE 0): Unable to remove folder %s.\n", folder_name.c_str());
+        }
 
-      int folderCreation = system(("mkdir " + folder_name).c_str());
-      if (folderCreation != 0) {
-        printf("Warning (PE 0): Unable to create folder %s.\n", folder_name.c_str());
-      }
+        int folderCreation = system(("mkdir " + folder_name).c_str());
+        if (folderCreation != 0) {
+            printf("Warning (PE 0): Unable to create folder %s.\n", folder_name.c_str());
+        }
     }
-
-    first_call_done = true;
-  }
-
-  string file_name = folder_name + "/" + name + "[" + to_string(pe) + "].txt";
-
-  ofstream output_file(file_name, ios::app);
-  if (output_file.is_open()) {
-    string new_line = "PE[" + to_string(pe) + "] [" + name + "][" + to_string(lineNumber) + "] " + to_string(value);
-    output_file << new_line << endl;
-    output_file.close();
-  } else {
-    printf("Failed to write %s to output file.\n", name.c_str());
-  }
 }
 
+// Print out value of variable to a new file titled "<variable_name>[pe].txt" in the folder
+void outVariableToNewFile(const string &name, int64_t value, int lineNumber) {
+    int pe = MYTHREAD;
+    string file_name = folder_name + "/" + name + "[" + to_string(pe) + "].txt";
+
+    ofstream output_file(file_name, ios::app);
+    if (output_file.is_open()) {
+        string new_line = "PE[" + to_string(pe) + "] [" + name + "][" + to_string(lineNumber) + "] " + to_string(value);
+        output_file << new_line << endl;
+        output_file.close();
+    } else {
+        printf("Failed to write %s to output file.\n", name.c_str());
+    }
+}
 //////////////////////////////////////////////////////////////////////////////////////
 
 
@@ -532,7 +526,9 @@ sparsemat_t * generate_toposort_input(int64_t numrows, double prob, int64_t rand
 }
 
 int main(int argc, char * argv[]) {
-
+  // Reset outputs folder
+  setupOutputDirectory();
+  
   const char *deps[] = { "system", "bale_actor" };
   hclib::launch(deps, 2, [=] {
 

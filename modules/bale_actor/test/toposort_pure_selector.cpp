@@ -46,6 +46,7 @@ extern "C" {
 #include <std_options.h>
 #include "selector.h"
 
+//////////////////////////////////////////////////////////////////////////////////////
 // Debugging module
 #include <fstream>
 #include <iostream>
@@ -56,51 +57,51 @@ extern "C" {
 #define MYTHREAD shmem_my_pe()
 #define OUTVAR(var) outVariableToNewFile(#var, var, __LINE__)
 
+using namespace std;
+
 // Helper function to extract the file name without path or extension
-static std::string extractFileName(const std::string& full_path) {
+string extractFileName(const string& full_path) {
     size_t last_slash = full_path.find_last_of("/\\");
     size_t last_dot = full_path.find_last_of(".");
-    std::string file_name = full_path.substr(
-        (last_slash == std::string::npos ? 0 : last_slash + 1),
-        (last_dot == std::string::npos ? std::string::npos : last_dot - last_slash - 1));
+    string file_name = full_path.substr(
+        (last_slash == string::npos ? 0 : last_slash + 1),
+        (last_dot == string::npos ? string::npos : last_dot - last_slash - 1));
     return file_name;
 }
 
-// Print out value of variable to a new file
-static void outVariableToNewFile(const std::string &name, int64_t value, int lineNumber) {
-  static const std::string folder_name = extractFileName(__FILE__) + "_outputs";
-  int pe = MYTHREAD;
+static const string folder_name = extractFileName(__FILE__) + "_outputs";
 
-  // Manage folder creation once per run (PE 0)
-  static bool first_call_done = false;
-  if (!first_call_done) {
+// Call this function once at the start of program to remove and recreate the output directory.
+void setupOutputDirectory() {
+    int pe = MYTHREAD;
     if (pe == 0) {
-      int folderRemoval = system(("rm -rf " + folder_name).c_str());
-      if (folderRemoval != 0) {
-        printf("Warning (PE 0): Unable to remove folder %s.\n", folder_name.c_str());
-      }
+        int folderRemoval = system(("rm -rf " + folder_name).c_str());
+        if (folderRemoval != 0) {
+            printf("Warning (PE 0): Unable to remove folder %s.\n", folder_name.c_str());
+        }
 
-      int folderCreation = system(("mkdir " + folder_name).c_str());
-      if (folderCreation != 0) {
-        printf("Warning (PE 0): Unable to create folder %s.\n", folder_name.c_str());
-      }
+        int folderCreation = system(("mkdir " + folder_name).c_str());
+        if (folderCreation != 0) {
+            printf("Warning (PE 0): Unable to create folder %s.\n", folder_name.c_str());
+        }
     }
-
-    shmem_barrier_all();
-    first_call_done = true;
-  }
-
-  std::string file_name = folder_name + "/" + name + "[" + std::to_string(pe) + "].txt";
-
-  std::ofstream output_file(file_name, std::ios::app);
-  if (output_file.is_open()) {
-    std::string new_line = "PE[" + std::to_string(pe) + "] [" + name + "][" + std::to_string(lineNumber) + "] " + std::to_string(value);
-    output_file << new_line << std::endl;
-    output_file.close();
-  } else {
-    printf("Failed to write %s to output file.\n", name.c_str());
-  }
 }
+
+// Print out value of variable to a new file titled "<variable_name>[pe].txt" in the folder
+void outVariableToNewFile(const string &name, int64_t value, int lineNumber) {
+    int pe = MYTHREAD;
+    string file_name = folder_name + "/" + name + "[" + to_string(pe) + "].txt";
+
+    ofstream output_file(file_name, ios::app);
+    if (output_file.is_open()) {
+        string new_line = "PE[" + to_string(pe) + "] [" + name + "][" + to_string(lineNumber) + "] " + to_string(value);
+        output_file << new_line << endl;
+        output_file.close();
+    } else {
+        printf("Failed to write %s to output file.\n", name.c_str());
+    }
+}
+//////////////////////////////////////////////////////////////////////////////////////
 
 typedef struct pkg_topo_t {
     int64_t row;
@@ -507,6 +508,8 @@ sparsemat_t * generate_toposort_input(int64_t numrows, double prob, int64_t rand
 }
 
 int main(int argc, char * argv[]) {
+    // Reset outputs folder
+    setupOutputDirectory();
 
     const char *deps[] = { "system", "bale_actor" };
     hclib::launch(deps, 2, [=] {

@@ -1,0 +1,9 @@
+PE[0] [lrowsum[2]][166] 6
+PE[0] [lrowsum[2]][166] 0
+PE[0] [lrowsum[2]][166] 0
+PE[0] [lrowsum[2]][164] 6
+PE[0] [lrowsum[2]][164] 0
+PE[0] [lrowsum[2]][164] 0
+PE[0] [lrowsum[2]][164] 6
+PE[0] [lrowsum[2]][164] 0
+PE[0] [lrowsum[2]][164] 0

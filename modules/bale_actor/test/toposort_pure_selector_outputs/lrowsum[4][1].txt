@@ -1,0 +1,12 @@
+PE[1] [lrowsum[4]][166] 15
+PE[1] [lrowsum[4]][166] 9
+PE[1] [lrowsum[4]][166] 9
+PE[1] [lrowsum[4]][166] 0
+PE[1] [lrowsum[4]][164] 15
+PE[1] [lrowsum[4]][164] 9
+PE[1] [lrowsum[4]][164] 9
+PE[1] [lrowsum[4]][164] 0
+PE[1] [lrowsum[4]][164] 15
+PE[1] [lrowsum[4]][164] 9
+PE[1] [lrowsum[4]][164] 9
+PE[1] [lrowsum[4]][164] 0
