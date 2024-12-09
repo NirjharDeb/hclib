@@ -71,7 +71,7 @@ string extractFileName(const string& full_path) {
 
 static const string folder_name = extractFileName(__FILE__) + "_outputs";
 
-// Call this function once at the start of program to remove and recreate the output directory.
+// Call this function once at the start of program within hclib::launch to remove and recreate the output directory.
 void setupOutputDirectory() {
     int pe = MYTHREAD;
     if (pe == 0) {
@@ -87,10 +87,11 @@ void setupOutputDirectory() {
     }
 }
 
-// Print out value of variable to a new file titled "<variable_name>[pe].txt" in the folder
+// Print out value of variable to a new file titled "var_<variable_name>_pe<pe>.txt" in the folder
 void outVariableToNewFile(const string &name, int64_t value, int lineNumber) {
     int pe = MYTHREAD;
-    string file_name = folder_name + "/" + name + "[" + to_string(pe) + "].txt";
+    // The file name is now prefixed with "var_" and suffixed with "_pe<pe>" to avoid confusion.
+    string file_name = folder_name + "/var_" + name + "_pe" + to_string(pe) + ".txt";
 
     ofstream output_file(file_name, ios::app);
     if (output_file.is_open()) {
@@ -508,12 +509,10 @@ sparsemat_t * generate_toposort_input(int64_t numrows, double prob, int64_t rand
 }
 
 int main(int argc, char * argv[]) {
-    // Reset outputs folder
-    setupOutputDirectory();
-
     const char *deps[] = { "system", "bale_actor" };
     hclib::launch(deps, 2, [=] {
-
+        // Reset outputs folder
+        setupOutputDirectory();
         int64_t i, j, fromth, lnnz, start, end;
         int64_t pe, row, col, idx;
         double t1;

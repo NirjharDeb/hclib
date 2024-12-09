@@ -1,0 +1,7 @@
+PE[0] [lrowsum[1]][161] 32
+PE[0] [lrowsum[1]][161] 26
+PE[0] [lrowsum[1]][161] 26
+PE[0] [lrowsum[1]][161] 17
+PE[0] [lrowsum[1]][161] 9
+PE[0] [lrowsum[1]][161] 2
+PE[0] [lrowsum[1]][161] 0

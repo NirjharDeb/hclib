@@ -1,4 +1,0 @@
-PE[0] [matched_col[0]][190] 7
-PE[0] [matched_col[0]][188] 7
-PE[0] [matched_col[0]][188] 7
-PE[0] [matched_col[0]][184] 7

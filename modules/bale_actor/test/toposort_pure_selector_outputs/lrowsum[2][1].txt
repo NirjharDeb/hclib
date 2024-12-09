@@ -1,4 +1,0 @@
-PE[1] [lrowsum[2]][166] 0
-PE[1] [lrowsum[2]][164] 0
-PE[1] [lrowsum[2]][164] 0
-PE[1] [lrowsum[2]][160] 0

@@ -1,4 +1,0 @@
-PE[0] [matched_col[3]][190] 4
-PE[0] [matched_col[3]][188] 4
-PE[0] [matched_col[3]][188] 4
-PE[0] [matched_col[3]][184] 4

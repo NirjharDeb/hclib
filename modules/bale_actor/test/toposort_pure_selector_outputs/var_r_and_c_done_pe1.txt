@@ -1,0 +1,10 @@
+PE[1] [r_and_c_done][249] 1
+PE[1] [r_and_c_done][154] 2
+PE[1] [r_and_c_done][189] 3
+PE[1] [r_and_c_done][189] 4
+PE[1] [r_and_c_done][154] 5
+PE[1] [r_and_c_done][154] 6
+PE[1] [r_and_c_done][189] 7
+PE[1] [r_and_c_done][189] 8
+PE[1] [r_and_c_done][154] 9
+PE[1] [r_and_c_done][154] 10
