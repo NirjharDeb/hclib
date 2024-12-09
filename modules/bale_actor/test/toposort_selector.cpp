@@ -55,6 +55,7 @@ extern "C" {
 
 #define THREADS shmem_n_pes()
 #define MYTHREAD shmem_my_pe()
+#define OUTVAR(var) outVariableToNewFile(#var, var, __LINE__)
 
 using namespace std;
 
@@ -180,7 +181,7 @@ class TopoSort : public hclib::Selector<1, pkg_topo_t> {
   void check_termination() {
     // Termination condition is not correct
     // Initiate global done assumes that we can still send off messages and receive them
-    outVariableToNewFile("r_and_c_done", r_and_c_done, __LINE__);
+    OUTVAR(r_and_c_done);
     if (r_and_c_done == total_r_and_c) {
       initiate_global_done(); //If I change this to done(0), the behavior is deterministic and successful
     }
@@ -273,7 +274,7 @@ double toposort_matrix_selector(SHARED int64_t *rperm, SHARED int64_t *cperm, sp
   delete topo;
 
   num_levels++;
-  outVariableToNewFile("num_levels", num_levels, __LINE__);
+  OUTVAR(num_levels);
   /* At this point, we know for each row its level and the column it was matched with.
      We need to create cperm and rperm from this information */
   num_levels = lgp_reduce_max_l(num_levels);
