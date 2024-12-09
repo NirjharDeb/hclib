@@ -75,14 +75,11 @@ void outVariableToNewFile(const string &name, int64_t value, int lineNumber) {
   int pe = MYTHREAD;
 
   // Track the number of times this method is called in total (across all PEs)
-  // We'll manage folder creation only on PE 0.
   static bool first_call_done = false;
 
-  // If this is the first call *on any PE*, we want to ensure PE 0 resets the folder.
-  // To synchronize this correctly, we can do the following:
+  // If this is the first call on any PE
   if (!first_call_done) {
-    // Use an atomic operation or barrier to ensure only PE 0 does folder reset.
-    // We'll just rely on a simple check of pe == 0 here:
+    // Only PE 0 will reset the folder
     if (pe == 0) {
       int folderRemoval = system(("rm -rf " + folder_name).c_str());
       if (folderRemoval != 0) {
@@ -95,10 +92,6 @@ void outVariableToNewFile(const string &name, int64_t value, int lineNumber) {
       }
     }
 
-    // Ensure all PEs wait until PE 0 finishes
-    shmem_barrier_all();
-
-    // Now set the flag for all PEs
     first_call_done = true;
   }
 
@@ -115,6 +108,7 @@ void outVariableToNewFile(const string &name, int64_t value, int lineNumber) {
 }
 
 //////////////////////////////////////////////////////////////////////////////////////
+
 
 typedef struct pkg_topo_t {
   int64_t row;

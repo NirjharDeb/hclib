@@ -1,0 +1,14 @@
+PE[1] [r_and_c_done][182] 4
+PE[1] [r_and_c_done][189] 4
+PE[1] [r_and_c_done][153] 5
+PE[1] [r_and_c_done][189] 5
+PE[1] [r_and_c_done][153] 6
+PE[1] [r_and_c_done][189] 6
+PE[1] [r_and_c_done][182] 7
+PE[1] [r_and_c_done][189] 7
+PE[1] [r_and_c_done][182] 8
+PE[1] [r_and_c_done][189] 8
+PE[1] [r_and_c_done][153] 9
+PE[1] [r_and_c_done][189] 9
+PE[1] [r_and_c_done][153] 10
+PE[1] [r_and_c_done][189] 10

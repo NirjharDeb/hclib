@@ -1,0 +1,7 @@
+PE[1] [lrowsum[0]][158] 29
+PE[1] [lrowsum[0]][158] 29
+PE[1] [lrowsum[0]][158] 20
+PE[1] [lrowsum[0]][158] 12
+PE[1] [lrowsum[0]][158] 5
+PE[1] [lrowsum[0]][158] 3
+PE[1] [lrowsum[0]][158] 0
