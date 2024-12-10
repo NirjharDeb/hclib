@@ -181,15 +181,15 @@ class TopoSort : public hclib::Selector<1, pkg_topo_t> {
   }
 
   void check_termination() {
-    OUTVAR(r_and_c_done);
+    //OUTVAR(r_and_c_done);
     if (r_and_c_done == total_r_and_c) {
       initiate_global_done();
     }
   }
 
 public:
-  TopoSort(sparsemat_t *tmat, int64_t *lrowsum, int64_t *lrowcnt, int64_t *level, int64_t *matched_col, int64_t lnr, int64_t lnc, int64_t initial_rowlast)
-      : tmat(tmat), lrowsum(lrowsum), lrowcnt(lrowcnt), level(level), matched_col(matched_col), lnr(lnr), lnc(lnc), r_and_c_done(initial_rowlast) {
+  TopoSort(sparsemat_t *tmat, int64_t *lrowsum, int64_t *lrowcnt, int64_t *level, int64_t *matched_col, int64_t lnr, int64_t lnc, int64_t r_and_c_done)
+      : tmat(tmat), lrowsum(lrowsum), lrowcnt(lrowcnt), level(level), matched_col(matched_col), lnr(lnr), lnc(lnc), r_and_c_done(r_and_c_done) {
     mb[0].process = [this](pkg_topo_t pkg, int sender_rank) { this->process(pkg, sender_rank); };
     total_r_and_c = lnr + lnc;
   }
@@ -249,8 +249,11 @@ double toposort_matrix_selector(SHARED int64_t *rperm, SHARED int64_t *cperm, sp
       lrowsum[i] += mat->lnonzero[j];
   }
 
+  int64_t r_and_c_done = initial_rowlast;
+  OUTVAR(r_and_c_done);
+
   int64_t num_levels = 0;
-  TopoSort *topo = new TopoSort(tmat, lrowsum, lrowcnt, level, matched_col, lnr, lnc, initial_rowlast);
+  TopoSort *topo = new TopoSort(tmat, lrowsum, lrowcnt, level, matched_col, lnr, lnc, r_and_c_done);
 
   lgp_barrier();
 
