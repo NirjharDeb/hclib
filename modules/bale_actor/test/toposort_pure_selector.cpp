@@ -293,6 +293,7 @@ double toposort_matrix_selector(SHARED int64_t *rperm, SHARED int64_t *cperm,
         }
     });
 
+    // Print global total of toposort messages
     {
         int64_t local_msgs = topo->getMessageCount();
         int64_t total_msgs = lgp_reduce_add_l(local_msgs);
