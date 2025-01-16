@@ -126,19 +126,18 @@ public:
 
     int64_t getNumLevels() { return num_levels; }
 
-    // 1) NEW: local message counter
 private:
     int64_t local_send_count_ = 0;
 
 public:
-    // 2) NEW: override send(...) to count messages
+    // override send(...) to count messages
     using hclib::Selector<1, pkg_topo_t>::send;
     void send(int slot, pkg_topo_t item, int receiver) {
         local_send_count_++;
         hclib::Selector<1, pkg_topo_t>::send(slot, item, receiver);
     }
 
-    // 3) NEW: getter to retrieve local message count
+    // getter to retrieve local message count
     int64_t getMessageCount() const {
         return local_send_count_;
     }
@@ -168,7 +167,7 @@ private:
                 pkg.col = curr_col*THREADS + MYTHREAD;
                 pkg.level = col_level;
                 int64_t pe = row % THREADS;
-                send(0, pkg, pe); // calls overridden send(...)
+                send(0, pkg, pe);
             }
             r_and_c_done++;
             OUTVAR(r_and_c_done);
@@ -207,7 +206,7 @@ private:
                 outVariableToNewFile("matched_col[" + std::to_string(row) + "]",
                                      matched_col[row], __LINE__);
                 int64_t pe = pkg.col % THREADS;
-                send(0, pkg, pe); // calls overridden send(...)
+                send(0, pkg, pe);
                 r_and_c_done++;
                 OUTVAR(r_and_c_done);
                 if (r_and_c_done == (lnr+lnc)) {
@@ -269,7 +268,7 @@ double toposort_matrix_selector(SHARED int64_t *rperm, SHARED int64_t *cperm,
     int64_t r_and_c_done = rowlast;
     OUTVAR(r_and_c_done);
 
-    int64_t num_levels = 0; // we will track level updates when done
+    int64_t num_levels = 0;
     OUTVAR(num_levels);
 
     TopoSort *topo = new TopoSort(tmat, lrowsum, lrowcnt, level, matched_col,
@@ -290,11 +289,10 @@ double toposort_matrix_selector(SHARED int64_t *rperm, SHARED int64_t *cperm,
             outVariableToNewFile("matched_col[" + std::to_string(row) + "]",
                                  matched_col[row], __LINE__);
             pe = pkg.col % THREADS;
-            topo->send(0, pkg, pe);  // calls our override
+            topo->send(0, pkg, pe);
         }
     });
 
-    // 4) NEW: Summarize total messages after finish
     {
         int64_t local_msgs = topo->getMessageCount();
         int64_t total_msgs = lgp_reduce_add_l(local_msgs);

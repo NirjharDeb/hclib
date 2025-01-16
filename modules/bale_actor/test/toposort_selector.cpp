@@ -133,7 +133,6 @@ private:
   int64_t local_send_count_ = 0;
 
 public:
-  // Override send() to increment counter
   using hclib::Selector<1, pkg_topo_t>::send;
   void send(int slot, pkg_topo_t item, int receiver) {
       local_send_count_++;
