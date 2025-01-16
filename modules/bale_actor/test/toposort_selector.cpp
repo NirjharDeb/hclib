@@ -280,7 +280,26 @@ double toposort_matrix_selector(SHARED int64_t *rperm, SHARED int64_t *cperm, sp
   delete topo;
 
   num_levels++;
-  OUTVAR(num_levels);
+  
+  // Check variables AFTER finish
+  {
+    string final_check_file = folder_name + "/final_values_pe" + to_string(MYTHREAD) + ".txt";
+    ofstream final_output(final_check_file, ios::app);
+    if (final_output.is_open()) {
+        for (int64_t i = 0; i < lnr; i++) {
+            final_output << "lrowsum[" << i << "]: " << lrowsum[i] << endl;
+            final_output << "lrowcnt[" << i << "]: " << lrowcnt[i] << endl;
+            final_output << "level[" << i << "]: " << level[i] << endl;
+            final_output << "matched_col[" << i << "]: " << matched_col[i] << endl;
+        }
+        final_output << "r_and_c_done: " << r_and_c_done << endl;
+        final_output << "num_levels: " << num_levels << endl;
+        final_output.close();
+    } else {
+        printf("Failed to write final values to output file.\n");
+    }
+  }
+
   /* At this point, we know for each row its level and the column it was matched with.
      We need to create cperm and rperm from this information */
   num_levels = lgp_reduce_max_l(num_levels);
