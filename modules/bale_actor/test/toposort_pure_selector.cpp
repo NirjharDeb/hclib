@@ -117,11 +117,31 @@ typedef struct pkg_cperm_t {
 
 class TopoSort: public hclib::Selector<1, pkg_topo_t> {
 public:
-    TopoSort(sparsemat_t *tmat, int64_t *lrowsum, int64_t *lrowcnt, int64_t *level, int64_t *matched_col, int64_t r_and_c_done, int64_t lnc, int64_t lnr)
-        : tmat(tmat), lrowsum(lrowsum), lrowcnt(lrowcnt), level(level), matched_col(matched_col), r_and_c_done(r_and_c_done), lnc(lnc), lnr(lnr) {
+    TopoSort(sparsemat_t *tmat, int64_t *lrowsum, int64_t *lrowcnt, int64_t *level,
+             int64_t *matched_col, int64_t r_and_c_done, int64_t lnc, int64_t lnr)
+        : tmat(tmat), lrowsum(lrowsum), lrowcnt(lrowcnt), level(level),
+          matched_col(matched_col), r_and_c_done(r_and_c_done), lnc(lnc), lnr(lnr) {
         mb[0].process = [this](pkg_topo_t pkg, int sender_rank) { this->process0(pkg, sender_rank); };
     }
+
     int64_t getNumLevels() { return num_levels; }
+
+    // 1) NEW: local message counter
+private:
+    int64_t local_send_count_ = 0;
+
+public:
+    // 2) NEW: override send(...) to count messages
+    using hclib::Selector<1, pkg_topo_t>::send;
+    void send(int slot, pkg_topo_t item, int receiver) {
+        local_send_count_++;
+        hclib::Selector<1, pkg_topo_t>::send(slot, item, receiver);
+    }
+
+    // 3) NEW: getter to retrieve local message count
+    int64_t getMessageCount() const {
+        return local_send_count_;
+    }
 
 private:
     sparsemat_t *tmat;
@@ -148,7 +168,7 @@ private:
                 pkg.col = curr_col*THREADS + MYTHREAD;
                 pkg.level = col_level;
                 int64_t pe = row % THREADS;
-                send(0, pkg, pe);
+                send(0, pkg, pe); // calls overridden send(...)
             }
             r_and_c_done++;
             OUTVAR(r_and_c_done);
@@ -158,33 +178,36 @@ private:
         } else {
             // Row message
             lrowsum[pkg_ptr.row] -= pkg_ptr.col;
-            outVariableToNewFile("lrowsum[" + std::to_string(pkg_ptr.row) + "]", lrowsum[pkg_ptr.row], __LINE__);
+            outVariableToNewFile("lrowsum[" + std::to_string(pkg_ptr.row) + "]",
+                                 lrowsum[pkg_ptr.row], __LINE__);
 
             lrowcnt[pkg_ptr.row]--;
-            outVariableToNewFile("lrowcnt[" + std::to_string(pkg_ptr.row) + "]", lrowcnt[pkg_ptr.row], __LINE__);
+            outVariableToNewFile("lrowcnt[" + std::to_string(pkg_ptr.row) + "]",
+                                 lrowcnt[pkg_ptr.row], __LINE__);
 
-            /* update the level for this row */
+            // update the level for this row
             if(pkg_ptr.level >= level[pkg_ptr.row]){
                 level[pkg_ptr.row] = pkg_ptr.level + 1;
-                outVariableToNewFile("level[" + std::to_string(pkg_ptr.row) + "]", level[pkg_ptr.row], __LINE__);
-                if((pkg_ptr.level+1) > num_levels) {
+                outVariableToNewFile("level[" + std::to_string(pkg_ptr.row) + "]",
+                                     level[pkg_ptr.row], __LINE__);
+                if((pkg_ptr.level + 1) > num_levels) {
                     num_levels = pkg_ptr.level + 1;
                     OUTVAR(num_levels);
                 }
             }
 
+            // One-degree row
             if(lrowcnt[pkg_ptr.row] == 1){
-                // now row is a one-degree row
                 int64_t row = pkg_ptr.row;
-                // create a new package
                 pkg_topo_t pkg;
                 pkg.row |= type_mask;
                 pkg.col = lrowsum[row];
                 pkg.level = level[row];
                 matched_col[row] = pkg.col;
-                outVariableToNewFile("matched_col[" + std::to_string(row) + "]", matched_col[row], __LINE__);
+                outVariableToNewFile("matched_col[" + std::to_string(row) + "]",
+                                     matched_col[row], __LINE__);
                 int64_t pe = pkg.col % THREADS;
-                send(0, pkg, pe);
+                send(0, pkg, pe); // calls overridden send(...)
                 r_and_c_done++;
                 OUTVAR(r_and_c_done);
                 if (r_and_c_done == (lnr+lnc)) {
@@ -193,7 +216,6 @@ private:
             }
         }
     }
-
 };
 
 class TopoSortCPerm: public hclib::Selector<1, pkg_cperm_t> {
@@ -201,8 +223,6 @@ class TopoSortCPerm: public hclib::Selector<1, pkg_cperm_t> {
 
     void process(pkg_cperm_t pkg, int sender_rank) {
         lcperm[pkg.col/THREADS] = pkg.pos;
-        // If needed, we could track lcperm here too
-        // outVariableToNewFile("lcperm[" + std::to_string(pkg.col/THREADS) + "]", lcperm[pkg.col/THREADS], __LINE__);
     }
 
 public:
@@ -211,7 +231,8 @@ public:
     }
 };
 
-double toposort_matrix_selector(SHARED int64_t *rperm, SHARED int64_t *cperm, sparsemat_t *mat, sparsemat_t *tmat) {
+double toposort_matrix_selector(SHARED int64_t *rperm, SHARED int64_t *cperm,
+                                sparsemat_t *mat, sparsemat_t *tmat) {
     int64_t nr = mat->numrows;
     int64_t nc = mat->numcols;
     int64_t lnr = (nr + THREADS - MYTHREAD - 1)/THREADS;
@@ -251,7 +272,8 @@ double toposort_matrix_selector(SHARED int64_t *rperm, SHARED int64_t *cperm, sp
     int64_t num_levels = 0; // we will track level updates when done
     OUTVAR(num_levels);
 
-    TopoSort *topo = new TopoSort(tmat, lrowsum, lrowcnt, level, matched_col, r_and_c_done, lnc, lnr);
+    TopoSort *topo = new TopoSort(tmat, lrowsum, lrowcnt, level, matched_col,
+                                  r_and_c_done, lnc, lnr);
 
     lgp_barrier();
     double t1 = wall_seconds();
@@ -265,11 +287,21 @@ double toposort_matrix_selector(SHARED int64_t *rperm, SHARED int64_t *cperm, sp
             pkg.col = lrowsum[row];
             pkg.level = level[row];
             matched_col[row] = pkg.col;
-            outVariableToNewFile("matched_col[" + std::to_string(row) + "]", matched_col[row], __LINE__);
+            outVariableToNewFile("matched_col[" + std::to_string(row) + "]",
+                                 matched_col[row], __LINE__);
             pe = pkg.col % THREADS;
-            topo->send(0, pkg, pe);
+            topo->send(0, pkg, pe);  // calls our override
         }
     });
+
+    // 4) NEW: Summarize total messages after finish
+    {
+        int64_t local_msgs = topo->getMessageCount();
+        int64_t total_msgs = lgp_reduce_add_l(local_msgs);
+        if (MYTHREAD == 0) {
+            printf("Total toposort messages: %ld\n", total_msgs);
+        }
+    }
 
     num_levels = topo->getNumLevels();
     num_levels++;
@@ -334,7 +366,7 @@ double toposort_matrix_selector(SHARED int64_t *rperm, SHARED int64_t *cperm, sp
 
     minavgmaxD_t stat[1];
     t1 = wall_seconds() - t1;
-    lgp_min_avg_max_d( stat, t1, THREADS );
+    lgp_min_avg_max_d(stat, t1, THREADS);
 
     free(lrowcnt);
     free(lrowsum);
@@ -401,8 +433,8 @@ double toposort_matrix_selector(SHARED int64_t *rperm, SHARED int64_t *cperm, sp
   In parallel there are three race conditions or synchronization issues to address..
 
   The first is reading and writing the queue of rows to be processed.
-  One way to handle it is to introduce the notion of a levels.
-  Within a level all threads process the all the rows on their queues
+  One way to handle it is to introduce the notion of levels.
+  Within a level all threads process all the rows on their queues
   and by doing so create new degree one rows. These rows are placed on the
   appropriate queues for the next level. There is a barrier between levels.
 
@@ -441,7 +473,6 @@ topo [-h][-b count][-M mask][-n num][-f filename][-Z num][-e prob][-D]\n\
 \n");
     lgp_global_exit(0);
 }
-
 
 /*! \brief check the result toposort
  *
@@ -518,12 +549,12 @@ sparsemat_t * generate_toposort_input(int64_t numrows, double prob, int64_t rand
 
     lgp_barrier();
 
-    clear_matrix( omat );
+    clear_matrix(omat);
     free(omat);
     lgp_all_free(rperminv);
     lgp_all_free(cperminv);
 
-    return( mat );
+    return(mat);
 }
 
 int main(int argc, char * argv[]) {

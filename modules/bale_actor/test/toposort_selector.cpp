@@ -129,6 +129,21 @@ class TopoSort : public hclib::Selector<1, pkg_topo_t> {
   int64_t total_r_and_c = 0;
   int64_t r_and_c_done;
 
+private:
+  int64_t local_send_count_ = 0;
+
+public:
+  // Override send() to increment counter
+  using hclib::Selector<1, pkg_topo_t>::send;
+  void send(int slot, pkg_topo_t item, int receiver) {
+      local_send_count_++;
+      hclib::Selector<1, pkg_topo_t>::send(slot, item, receiver);
+  }
+
+  int64_t getMessageCount() const {
+      return local_send_count_;
+  }
+
   void process(pkg_topo_t pkg_ptr, int sender_rank) {
     if (pkg_ptr.row & type_mask) {
       // Column message
@@ -187,7 +202,6 @@ class TopoSort : public hclib::Selector<1, pkg_topo_t> {
     }
   }
 
-public:
   TopoSort(sparsemat_t *tmat, int64_t *lrowsum, int64_t *lrowcnt, int64_t *level, int64_t *matched_col, int64_t lnr, int64_t lnc, int64_t r_and_c_done)
       : tmat(tmat), lrowsum(lrowsum), lrowcnt(lrowcnt), level(level), matched_col(matched_col), lnr(lnr), lnc(lnc), r_and_c_done(r_and_c_done) {
     mb[0].process = [this](pkg_topo_t pkg, int sender_rank) { this->process(pkg, sender_rank); };
@@ -275,6 +289,15 @@ double toposort_matrix_selector(SHARED int64_t *rperm, SHARED int64_t *cperm, sp
       topo->send(0, pkg_ptr, pe);
     }
   });
+
+  // Print global total of toposort messages
+  {
+    int64_t local_msgs = topo->getMessageCount();
+    int64_t total_msgs = lgp_reduce_add_l(local_msgs);
+    if (MYTHREAD == 0) {
+      printf("Total toposort messages: %ld\n", total_msgs);
+    }
+  }
 
   num_levels = topo->getNumLevels();
   delete topo;
@@ -606,7 +629,7 @@ int main(int argc, char * argv[]) {
   T0_fprintf(stderr,"Number of rows per thread      (-n)   %ld\n", l_numrows);
   T0_fprintf(stderr,"Avg # of nonzeros per row      (-Z)   %2.2lf\n", nz_per_row);
   T0_fprintf(stderr,"Erdos-Renyi edge probability   (-e)   %lf\n", erdos_renyi_prob);
-  T0_fprintf(stderr,"task mask (M) = %ld (should be 1,2,4,8,16 for agi, exstack, exstack2, conveyors, alternates\n", models_mask);
+  T0_fprintf(stderr,"task mask (M) = %ld (should be 1,2,4,8,16 for agi, exstack, exstack2, conveyor, alternate\n", models_mask);
 
   sparsemat_t * mat = generate_toposort_input(numrows, erdos_renyi_prob, rand_seed);
   if(!mat){T0_printf("ERROR: mat is NULL!\n"); exit(1);}
