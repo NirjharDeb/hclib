@@ -77,7 +77,7 @@ The missing final message indicates that global termination occurs prematurely, 
     - No message count discrepancy (sent: 63, received: 63).
 
 ## **Conclusion**
-The `initiate_global_done` function should ensure global termination occurs after all messages are sent and received, replicating the behavior of done(0).
+The `initiate_global_done` function should ensure global termination occurs after all messages are sent and received, replicating the behavior of `done(0)`.
 
 However, the `initiate_global_done` function prematurely terminates, causing:
 - Missing updates to key variables (`lrowcnt`, `lrowsum`, etc.).
