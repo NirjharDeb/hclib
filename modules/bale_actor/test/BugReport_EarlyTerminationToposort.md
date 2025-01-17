@@ -43,7 +43,10 @@ We have collected the following evidence to demonstrate that `initiate_global_do
 
 - Some variables, such as `lrowcnt[3]`, `lrowsum[3]`, `level[3]`, and `num_levels`, are missing the "final update" to reach their expected values.
 - Diffs for values after `hclib::finish` for 2 PEs and 5 Rows per PE:
-    - [PE 0 Differences](https://www.diffchecker.com/OstQqK4Y/): Significant differences in `lrowsum[3]`, `lrowcnt[3]`, `level[3]`, and `num_levels`.
+    - [PE 0 Differences](https://www.diffchecker.com/OstQqK4Y/): Differences in `lrowsum[3]`, `lrowcnt[3]`, `level[3]`, and `num_levels`. 
+        - Essentially, `lrowsum[3]` and `lrowcnt[3]` are supposed to zero out, but they do not. 
+        - `level[3]` is missing 1 final update to reach its correct value.
+        - As a result, `num_levels` is incorrect as well.
     - [PE 1 Differences](https://www.diffchecker.com/V366KemG/): No differences found.
 
 ### **Message Count Discrepancy:**
