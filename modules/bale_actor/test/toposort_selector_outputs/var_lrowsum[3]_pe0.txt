@@ -1,8 +1,8 @@
-PE[0] [lrowsum[3]][170] 39
-PE[0] [lrowsum[3]][170] 33
-PE[0] [lrowsum[3]][170] 33
-PE[0] [lrowsum[3]][170] 24
-PE[0] [lrowsum[3]][170] 16
-PE[0] [lrowsum[3]][170] 9
-PE[0] [lrowsum[3]][170] 7
-PE[0] [lrowsum[3]][170] 4
+PE[0] [lrowsum[3]][169] 39
+PE[0] [lrowsum[3]][169] 33
+PE[0] [lrowsum[3]][169] 33
+PE[0] [lrowsum[3]][169] 24
+PE[0] [lrowsum[3]][169] 16
+PE[0] [lrowsum[3]][169] 9
+PE[0] [lrowsum[3]][169] 7
+PE[0] [lrowsum[3]][169] 4

@@ -1,8 +1,8 @@
-PE[1] [lrowsum[1]][170] 37
-PE[1] [lrowsum[1]][170] 31
-PE[1] [lrowsum[1]][170] 31
-PE[1] [lrowsum[1]][170] 22
-PE[1] [lrowsum[1]][170] 14
-PE[1] [lrowsum[1]][170] 7
-PE[1] [lrowsum[1]][170] 5
-PE[1] [lrowsum[1]][170] 0
+PE[1] [lrowsum[1]][169] 37
+PE[1] [lrowsum[1]][169] 31
+PE[1] [lrowsum[1]][169] 31
+PE[1] [lrowsum[1]][169] 22
+PE[1] [lrowsum[1]][169] 14
+PE[1] [lrowsum[1]][169] 7
+PE[1] [lrowsum[1]][169] 5
+PE[1] [lrowsum[1]][169] 0

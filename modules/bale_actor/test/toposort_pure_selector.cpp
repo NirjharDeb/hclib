@@ -120,27 +120,12 @@ public:
     TopoSort(sparsemat_t *tmat, int64_t *lrowsum, int64_t *lrowcnt, int64_t *level,
              int64_t *matched_col, int64_t r_and_c_done, int64_t lnc, int64_t lnr)
         : tmat(tmat), lrowsum(lrowsum), lrowcnt(lrowcnt), level(level),
-          matched_col(matched_col), r_and_c_done(r_and_c_done), lnc(lnc), lnr(lnr) {
+          matched_col(matched_col), r_and_c_done(r_and_c_done), lnc(lnc), lnr(lnr)
+    {
         mb[0].process = [this](pkg_topo_t pkg, int sender_rank) { this->process0(pkg, sender_rank); };
     }
 
     int64_t getNumLevels() { return num_levels; }
-
-private:
-    int64_t local_send_count_ = 0;
-
-public:
-    // override send(...) to count messages
-    using hclib::Selector<1, pkg_topo_t>::send;
-    void send(int slot, pkg_topo_t item, int receiver) {
-        local_send_count_++;
-        hclib::Selector<1, pkg_topo_t>::send(slot, item, receiver);
-    }
-
-    // getter to retrieve local message count
-    int64_t getMessageCount() const {
-        return local_send_count_;
-    }
 
 private:
     sparsemat_t *tmat;
@@ -155,7 +140,33 @@ private:
     int64_t lnc;
     int64_t lnr;
 
+    // NEW: local counters for sent and received messages
+    int64_t local_send_count_ = 0;
+    int64_t local_recv_count_ = 0;
+
+public:
+    // Expose parent's send, but intercept to increment local_send_count_
+    using hclib::Selector<1, pkg_topo_t>::send;
+    void send(int slot, pkg_topo_t item, int receiver) {
+        local_send_count_++;
+        hclib::Selector<1, pkg_topo_t>::send(slot, item, receiver);
+    }
+
+    // Expose getMessageCount() for local sends
+    int64_t getMessageCount() const {
+        return local_send_count_;
+    }
+
+    // Expose getReceiveCount() for local receives
+    int64_t getReceiveCount() const {
+        return local_recv_count_;
+    }
+
+private:
     void process0(pkg_topo_t pkg_ptr, int sender_rank) {
+        // Increment local receive count
+        local_recv_count_++;
+
         if (pkg_ptr.row & type_mask) {
             // Column message
             int64_t curr_col = (pkg_ptr.col)/THREADS;
@@ -231,7 +242,8 @@ public:
 };
 
 double toposort_matrix_selector(SHARED int64_t *rperm, SHARED int64_t *cperm,
-                                sparsemat_t *mat, sparsemat_t *tmat) {
+                                sparsemat_t *mat, sparsemat_t *tmat)
+{
     int64_t nr = mat->numrows;
     int64_t nc = mat->numcols;
     int64_t lnr = (nr + THREADS - MYTHREAD - 1)/THREADS;
@@ -293,18 +305,27 @@ double toposort_matrix_selector(SHARED int64_t *rperm, SHARED int64_t *cperm,
         }
     });
 
-    // Print global total of toposort messages
+    // Print global total of toposort messages (sent) ...
     {
-        int64_t local_msgs = topo->getMessageCount();
-        int64_t total_msgs = lgp_reduce_add_l(local_msgs);
+        int64_t local_sends = topo->getMessageCount();
+        int64_t total_sends = lgp_reduce_add_l(local_sends);
         if (MYTHREAD == 0) {
-            printf("Total toposort messages: %ld\n", total_msgs);
+            printf("Total toposort messages *sent*: %ld\n", total_sends);
+        }
+    }
+
+    // ... and messages (received)
+    {
+        int64_t local_recvs = topo->getReceiveCount();
+        int64_t total_recvs = lgp_reduce_add_l(local_recvs);
+        if (MYTHREAD == 0) {
+            printf("Total toposort messages *received*: %ld\n", total_recvs);
         }
     }
 
     num_levels = topo->getNumLevels();
     num_levels++;
-    
+
     // Check variables AFTER finish
     {
         string final_check_file = folder_name + "/final_values_pe" + to_string(MYTHREAD) + ".txt";
@@ -415,26 +436,26 @@ double toposort_matrix_selector(SHARED int64_t *rperm, SHARED int64_t *cperm,
   \verbatim
   For all rows with a single non-zero, put its non-zero onto a queue.
   While the queue is not empty:
-  pop a non-zero from the queue (this represents row r and column c)
-  claim its new position as the last row and column of the permutations being created
-  remove all the non-zeros in column c
-  if any row now has a single non-zero, enqueue that non-zero
+    pop a non-zero from the queue (this represents row r and column c)
+    claim its new position as the last row and column of the permutations being created
+    remove all the non-zeros in column c
+    if any row now has a single non-zero, enqueue that non-zero
   \endverbatim
 
   Rather than changing the matrix by deleting rows and column and then searching the
   new matrix for the next row.  We do the obvious thing of keeping and array of row counts,
   <b>rowcnt[i]</b> is the number of non-zeros in <b>row i</b> and
-  we use a cool trick to find the column of a row with <b>rowcnt[i]</b> equal 1.
+  we use a cool trick to find the column of a row with <b>rowcnt[i]</b> = 1.
   We initialize an array, <b>rowsum[i]</b>, to be the sum of the column indices in <b> row i</b>.
-  When we "delete" a column we decrement <b>rowcnt[i]</b> and <b>rowsum[i]</b> by that column index.
+  When we "delete" a column, we decrement <b>rowcnt[i]</b> and <b>rowsum[i]</b> by that column index.
   Hence, when the <b>rowcnt[i]</b> gets down to one, the <b>rowsum[i]</b> is the column that is left.
 
-  In parallel there are three race conditions or synchronization issues to address..
+  In parallel there are three race conditions or synchronization issues to address.
 
   The first is reading and writing the queue of rows to be processed.
   One way to handle it is to introduce the notion of levels.
-  Within a level all threads process all the rows on their queues
-  and by doing so create new degree one rows. These rows are placed on the
+  Within a level, all threads process all the rows on their queues
+  and by doing so create new degree-one rows. These rows are placed on the
   appropriate queues for the next level. There is a barrier between levels.
 
   Threads race to pick their position in <b>rperm</b> and <b>cperm</b>.
@@ -447,14 +468,14 @@ double toposort_matrix_selector(SHARED int64_t *rperm, SHARED int64_t *cperm,
 
   Usage:
   topo [-h][-b count][-M mask][-n num][-f filename][-Z num][-e prob][-D]
-  - -h prints this help message
-  - -b count is the number of packages in an exstack(2) buffer
-  - -M mask is the or of 1,2,4,8,16 for the models: agi,exstack,exstack2,conveyor,alternate
-  - -n num is the number of rows per thread
-  - -f filename read the input matrix from filename (in Matrix Market format)
-  - -Z num use an Erdos Renyi matrix with num being the expected number of nonzeros in a row
-  - -e prob use an Erdos Renyi matrix where prob is the probability of an entry in matrix being non-zero
-  - -D debugging flag that dumps out input and output files.
+  -h prints this help message
+  -b count is the number of packages in an exstack(2) buffer
+  -M mask is the or of 1,2,4,8,16 for the models: agi,exstack,exstack2,conveyor,alternate
+  -n num is the number of rows per thread
+  -f filename read the input matrix from filename (in Matrix Market format)
+  -Z num use an Erdos Renyi matrix with num being the expected number of nonzeros in a row
+  -e prob use an Erdos Renyi matrix where prob is the probability of an entry in matrix being non-zero
+  -D debugging flag that dumps out input and output files.
 */
 
 static void usage(void) {
@@ -475,7 +496,7 @@ topo [-h][-b count][-M mask][-n num][-f filename][-Z num][-e prob][-D]\n\
 
 /*! \brief check the result toposort
  *
- * check that the permutations are in fact permutations and the check that applying
+ * Check that the permutations are in fact permutations and that applying
  * them to the original matrix yields an upper triangular matrix
  * \param mat the original matrix
  * \param rperminv the row permutation
@@ -637,6 +658,7 @@ int main(int argc, char * argv[]) {
         lgp_barrier();
         T0_fprintf(stderr,"  %8.3lf seconds\n", laptime);
 
+        // Optionally check for upper triangular correctness
         if( check_is_triangle(mat, rperminv2, cperminv2, dump_files) ) {
             printf("\nERROR: After toposort_matrix_upc: mat2 is not upper-triangular!\n");
         }

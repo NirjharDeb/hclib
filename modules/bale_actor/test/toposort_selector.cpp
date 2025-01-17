@@ -130,20 +130,22 @@ class TopoSort : public hclib::Selector<1, pkg_topo_t> {
   int64_t r_and_c_done;
 
 private:
+  // Count how many messages we send AND receive
   int64_t local_send_count_ = 0;
+  int64_t local_recv_count_ = 0;
 
 public:
+  // Intercept send(...) calls
   using hclib::Selector<1, pkg_topo_t>::send;
   void send(int slot, pkg_topo_t item, int receiver) {
       local_send_count_++;
       hclib::Selector<1, pkg_topo_t>::send(slot, item, receiver);
   }
 
-  int64_t getMessageCount() const {
-      return local_send_count_;
-  }
-
+  // We'll increment receive count at the start of process(...)
   void process(pkg_topo_t pkg_ptr, int sender_rank) {
+    local_recv_count_++;  // <-- Count this as a received message
+
     if (pkg_ptr.row & type_mask) {
       // Column message
       int64_t curr_col = (pkg_ptr.col) / THREADS;
@@ -194,16 +196,29 @@ public:
     }
   }
 
+  // Accessors for send/receive counts
+  int64_t getMessageCount() const {
+      return local_send_count_;
+  }
+  int64_t getReceiveCount() const {
+      return local_recv_count_;
+  }
+
   void check_termination() {
-    //OUTVAR(r_and_c_done);
     if (r_and_c_done == total_r_and_c) {
       initiate_global_done();
     }
   }
 
-  TopoSort(sparsemat_t *tmat, int64_t *lrowsum, int64_t *lrowcnt, int64_t *level, int64_t *matched_col, int64_t lnr, int64_t lnc, int64_t r_and_c_done)
-      : tmat(tmat), lrowsum(lrowsum), lrowcnt(lrowcnt), level(level), matched_col(matched_col), lnr(lnr), lnc(lnc), r_and_c_done(r_and_c_done) {
-    mb[0].process = [this](pkg_topo_t pkg, int sender_rank) { this->process(pkg, sender_rank); };
+  TopoSort(sparsemat_t *tmat, int64_t *lrowsum, int64_t *lrowcnt, int64_t *level,
+           int64_t *matched_col, int64_t lnr, int64_t lnc, int64_t r_and_c_done)
+      : tmat(tmat), lrowsum(lrowsum), lrowcnt(lrowcnt),
+        level(level), matched_col(matched_col),
+        lnr(lnr), lnc(lnc), r_and_c_done(r_and_c_done) {
+
+    mb[0].process = [this](pkg_topo_t pkg, int sender_rank) {
+      this->process(pkg, sender_rank);
+    };
     total_r_and_c = lnr + lnc;
   }
 
@@ -215,8 +230,6 @@ class TopoSortCPerm: public hclib::Selector<1, pkg_cperm_t> {
 
   void process(pkg_cperm_t pkg, int sender_rank) {
     lcperm[pkg.col/THREADS] = pkg.pos;
-    // Potentially add OUTVAR here if needed, but lcperm is also indexed.
-    // outVariableToNewFile("lcperm[" + to_string(pkg.col/THREADS) + "]", lcperm[pkg.col/THREADS], __LINE__);
   }
 
 public:
@@ -225,7 +238,8 @@ public:
   }
 };
 
-double toposort_matrix_selector(SHARED int64_t *rperm, SHARED int64_t *cperm, sparsemat_t *mat, sparsemat_t *tmat) {
+double toposort_matrix_selector(SHARED int64_t *rperm, SHARED int64_t *cperm,
+                                sparsemat_t *mat, sparsemat_t *tmat) {
   int64_t nr = mat->numrows;
   int64_t nc = mat->numcols;
 
@@ -266,7 +280,8 @@ double toposort_matrix_selector(SHARED int64_t *rperm, SHARED int64_t *cperm, sp
   OUTVAR(r_and_c_done);
 
   int64_t num_levels = 0;
-  TopoSort *topo = new TopoSort(tmat, lrowsum, lrowcnt, level, matched_col, lnr, lnc, r_and_c_done);
+  TopoSort *topo = new TopoSort(tmat, lrowsum, lrowcnt, level, matched_col,
+                                lnr, lnc, r_and_c_done);
 
   lgp_barrier();
 
@@ -283,18 +298,28 @@ double toposort_matrix_selector(SHARED int64_t *rperm, SHARED int64_t *cperm, sp
       pkg_ptr.col = lrowsum[row];
       pkg_ptr.level = level[row];
       matched_col[row] = pkg_ptr.col;
-      outVariableToNewFile("matched_col[" + to_string(row) + "]", matched_col[row], __LINE__);
+      outVariableToNewFile("matched_col[" + to_string(row) + "]",
+                           matched_col[row], __LINE__);
       pe = pkg_ptr.col % THREADS;
       topo->send(0, pkg_ptr, pe);
     }
   });
 
-  // Print global total of toposort messages
+  // Print global total of toposort messages *sent*
   {
-    int64_t local_msgs = topo->getMessageCount();
-    int64_t total_msgs = lgp_reduce_add_l(local_msgs);
+    int64_t local_sends = topo->getMessageCount();
+    int64_t total_sends = lgp_reduce_add_l(local_sends);
     if (MYTHREAD == 0) {
-      printf("Total toposort messages: %ld\n", total_msgs);
+      printf("Total toposort messages *sent*: %ld\n", total_sends);
+    }
+  }
+
+  // Print global total of toposort messages *received*
+  {
+    int64_t local_recvs = topo->getReceiveCount();
+    int64_t total_recvs = lgp_reduce_add_l(local_recvs);
+    if (MYTHREAD == 0) {
+      printf("Total toposort messages *received*: %ld\n", total_recvs);
     }
   }
 
@@ -302,7 +327,7 @@ double toposort_matrix_selector(SHARED int64_t *rperm, SHARED int64_t *cperm, sp
   delete topo;
 
   num_levels++;
-  
+
   // Check variables AFTER finish
   {
     string final_check_file = folder_name + "/final_values_pe" + to_string(MYTHREAD) + ".txt";
@@ -333,8 +358,6 @@ double toposort_matrix_selector(SHARED int64_t *rperm, SHARED int64_t *cperm, sp
   // Count level sizes locally
   for(int64_t i = 0; i < lnr; i++){
     level_sizes[level[i]]++;
-    // If needed, we can print these updates as well:
-    // outVariableToNewFile("level[" + to_string(i) + "]", level[i], __LINE__);
   }
 
   // Compute level_start and total sizes using SHMEM operations
@@ -370,7 +393,6 @@ double toposort_matrix_selector(SHARED int64_t *rperm, SHARED int64_t *cperm, sp
       pkg.pos = lrperm[i];
       pkg.col = matched_col[i];
       int64_t pe  = pkg.col % THREADS;
-      // We could also print matched_col[i] values here if needed
       topocperm->send(0, pkg, pe);
     }
     topocperm->done(0);
