@@ -86,3 +86,7 @@ However, the `initiate_global_done` function prematurely terminates, causing:
 - Missing updates to key variables (`lrowcnt`, `lrowsum`, etc.).
 - Non-deterministic results for specific PE and rows-per-thread combinations.
 - Message count mismatch (1 final message not received).
+
+## **Clarifications**
+1. Please note that the **only difference** between `toposort_selector` (my modified variant) and the `toposort_pure_selector` is that `done(0)` was replaced with `initiate_global_done`.
+2. The `done()` version produces the correct output in the Docker container most likely because there are not too many messages to process. This was also verified using a fresh Docker container.
