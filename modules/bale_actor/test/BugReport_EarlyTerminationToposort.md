@@ -3,6 +3,14 @@
 ## **Description**
 We hypothesize that `initiate_global_done` is terminating too early, resulting in non-deterministic behavior when replacing `done(0)` with `initiate_global_done` in `toposort_pure_selector`. This issue causes early termination for certain Processor Elements (PE) and rows-per-thread combinations.
 
+## **Clarifications**
+1. Please note that the **only difference** between `toposort_selector` (my modified variant) and the `toposort_pure_selector` is that `done(0)` was replaced with `initiate_global_done`.
+- [Variant 1 (toposort_selector.cpp) Link](https://github.com/NirjharDeb/hclib/blob/nirjhar/toposort-global-termination-v2/modules/bale_actor/test/toposort_selector.cpp)
+- [Variant 2 (toposort_pure_selector.cpp) Link](https://github.com/NirjharDeb/hclib/blob/nirjhar/toposort-global-termination-v2/modules/bale_actor/test/toposort_pure_selector.cpp)
+2. The `done()` version produces the correct output in the Docker container most likely because there are not too many messages to process. This was also verified using a fresh Docker container.
+3. The `initiate_global_done` version is non-deterministic in the Docker container, which was also verified using a fresh Docker container.
+
+## **Example**
 For example, with 2 PEs and 5 rows per thread, the program fails to produce the expected output, as shown below.
 
 ### **Example Output**
@@ -86,7 +94,3 @@ However, the `initiate_global_done` function prematurely terminates, causing:
 - Missing updates to key variables (`lrowcnt`, `lrowsum`, etc.).
 - Non-deterministic results for specific PE and rows-per-thread combinations.
 - Message count mismatch (1 final message not received).
-
-## **Clarifications**
-1. Please note that the **only difference** between `toposort_selector` (my modified variant) and the `toposort_pure_selector` is that `done(0)` was replaced with `initiate_global_done`.
-2. The `done()` version produces the correct output in the Docker container most likely because there are not too many messages to process. This was also verified using a fresh Docker container.
