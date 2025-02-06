@@ -1,7 +1,6 @@
-PE[0] [lrowsum[1]][169] 32
-PE[0] [lrowsum[1]][169] 26
-PE[0] [lrowsum[1]][169] 26
-PE[0] [lrowsum[1]][169] 17
-PE[0] [lrowsum[1]][169] 9
-PE[0] [lrowsum[1]][169] 2
-PE[0] [lrowsum[1]][169] 0
+PE[0] [lrowsum[1]][179] 386
+PE[0] [lrowsum[1]][179] 256
+PE[0] [lrowsum[1]][179] 201
+PE[0] [lrowsum[1]][179] 187
+PE[0] [lrowsum[1]][179] 113
+PE[0] [lrowsum[1]][179] 1

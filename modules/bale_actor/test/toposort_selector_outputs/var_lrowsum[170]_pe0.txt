@@ -1,0 +1,6 @@
+PE[0] [lrowsum[170]][179] 300
+PE[0] [lrowsum[170]][179] 137
+PE[0] [lrowsum[170]][179] 96
+PE[0] [lrowsum[170]][179] 74
+PE[0] [lrowsum[170]][179] 67
+PE[0] [lrowsum[170]][179] 42

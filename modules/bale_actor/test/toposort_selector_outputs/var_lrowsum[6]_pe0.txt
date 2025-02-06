@@ -1,0 +1,4 @@
+PE[0] [lrowsum[6]][179] 533
+PE[0] [lrowsum[6]][179] 423
+PE[0] [lrowsum[6]][179] 265
+PE[0] [lrowsum[6]][179] 174

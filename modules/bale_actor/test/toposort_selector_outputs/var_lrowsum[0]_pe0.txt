@@ -1,6 +1,5 @@
-PE[0] [lrowsum[0]][169] 30
-PE[0] [lrowsum[0]][169] 24
-PE[0] [lrowsum[0]][169] 24
-PE[0] [lrowsum[0]][169] 15
-PE[0] [lrowsum[0]][169] 7
-PE[0] [lrowsum[0]][169] 0
+PE[0] [lrowsum[0]][179] 668
+PE[0] [lrowsum[0]][179] 481
+PE[0] [lrowsum[0]][179] 391
+PE[0] [lrowsum[0]][179] 276
+PE[0] [lrowsum[0]][179] 113

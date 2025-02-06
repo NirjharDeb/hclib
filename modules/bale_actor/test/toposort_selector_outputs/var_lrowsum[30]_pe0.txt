@@ -1,0 +1,16 @@
+PE[0] [lrowsum[30]][179] 1818
+PE[0] [lrowsum[30]][179] 1689
+PE[0] [lrowsum[30]][179] 1559
+PE[0] [lrowsum[30]][179] 1367
+PE[0] [lrowsum[30]][179] 1294
+PE[0] [lrowsum[30]][179] 1261
+PE[0] [lrowsum[30]][179] 1178
+PE[0] [lrowsum[30]][179] 1056
+PE[0] [lrowsum[30]][179] 956
+PE[0] [lrowsum[30]][179] 793
+PE[0] [lrowsum[30]][179] 621
+PE[0] [lrowsum[30]][179] 498
+PE[0] [lrowsum[30]][179] 403
+PE[0] [lrowsum[30]][179] 396
+PE[0] [lrowsum[30]][179] 186
+PE[0] [lrowsum[30]][179] 121

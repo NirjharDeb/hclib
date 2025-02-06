@@ -1,0 +1,11 @@
+PE[0] [lrowsum[66]][179] 828
+PE[0] [lrowsum[66]][179] 641
+PE[0] [lrowsum[66]][179] 538
+PE[0] [lrowsum[66]][179] 465
+PE[0] [lrowsum[66]][179] 347
+PE[0] [lrowsum[66]][179] 307
+PE[0] [lrowsum[66]][179] 303
+PE[0] [lrowsum[66]][179] 113
+PE[0] [lrowsum[66]][179] 112
+PE[0] [lrowsum[66]][179] 93
+PE[0] [lrowsum[66]][179] 59

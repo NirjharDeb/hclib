@@ -1,0 +1,9 @@
+PE[0] [lrowsum[32]][179] 604
+PE[0] [lrowsum[32]][179] 523
+PE[0] [lrowsum[32]][179] 407
+PE[0] [lrowsum[32]][179] 404
+PE[0] [lrowsum[32]][179] 313
+PE[0] [lrowsum[32]][179] 280
+PE[0] [lrowsum[32]][179] 225
+PE[0] [lrowsum[32]][179] 112
+PE[0] [lrowsum[32]][179] 4

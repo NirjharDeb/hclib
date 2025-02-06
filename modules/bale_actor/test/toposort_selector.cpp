@@ -1,6 +1,5 @@
 /******************************************************************
 //
-//
 //  Copyright(C) 2018, Institute for Defense Analyses
 //  4850 Mark Center Drive, Alexandria, VA; 703-845-2500
 //  This material may be reproduced by or for the US Government
@@ -79,7 +78,6 @@ void setupOutputDirectory() {
         if (folderRemoval != 0) {
             printf("Warning (PE 0): Unable to remove folder %s.\n", folder_name.c_str());
         }
-
         int folderCreation = system(("mkdir " + folder_name).c_str());
         if (folderCreation != 0) {
             printf("Warning (PE 0): Unable to create folder %s.\n", folder_name.c_str());
@@ -90,9 +88,7 @@ void setupOutputDirectory() {
 // Print out value of variable to a new file titled "var_<variable_name>_pe<pe>.txt" in the folder
 void outVariableToNewFile(const string &name, int64_t value, int lineNumber) {
     int pe = MYTHREAD;
-    // The file name is now prefixed with "var_" and suffixed with "_pe<pe>" to avoid confusion.
     string file_name = folder_name + "/var_" + name + "_pe" + to_string(pe) + ".txt";
-
     ofstream output_file(file_name, ios::app);
     if (output_file.is_open()) {
         string new_line = "PE[" + to_string(pe) + "] [" + name + "][" + to_string(lineNumber) + "] " + to_string(value);
@@ -103,7 +99,6 @@ void outVariableToNewFile(const string &name, int64_t value, int lineNumber) {
     }
 }
 //////////////////////////////////////////////////////////////////////////////////////
-
 
 typedef struct pkg_topo_t {
   int64_t row;
@@ -116,6 +111,9 @@ typedef struct pkg_cperm_t {
   int64_t col;
 } pkg_cperm_t;
 
+// We use the highest bit in row as a type mask.
+static const uint64_t type_mask = 0x8000000000000000;
+
 class TopoSort : public hclib::Selector<1, pkg_topo_t> {
   sparsemat_t *tmat;
   int64_t *lrowsum;
@@ -123,189 +121,192 @@ class TopoSort : public hclib::Selector<1, pkg_topo_t> {
   int64_t *level;
   int64_t *matched_col;
   int64_t num_levels = 0;
-  uint64_t type_mask = 0x8000000000000000;
-  int64_t lnr = 0;
-  int64_t lnc = 0;
-  int64_t total_r_and_c = 0;
-  int64_t r_and_c_done;
+  int64_t lnr = 0;  // number of local rows
+  int64_t lnc = 0;  // number of local columns
+
+  // Count how many rows have been finalized (pivot event sent)
+  int64_t pivot_count;
+  // For each local row, track whether its pivot has been finalized.
+  bool *finalized;
+
+public:
+  // A helper to mark an initial row as finalized.
+  void mark_finalized(int64_t row) {
+    if (!finalized[row]) {
+      finalized[row] = true;
+      pivot_count++;
+    }
+  }
 
 private:
-  // Count how many messages we send AND receive
   int64_t local_send_count_ = 0;
   int64_t local_recv_count_ = 0;
 
 public:
-  // Intercept send(...) calls
   using hclib::Selector<1, pkg_topo_t>::send;
   void send(int slot, pkg_topo_t item, int receiver) {
       local_send_count_++;
       hclib::Selector<1, pkg_topo_t>::send(slot, item, receiver);
   }
 
-  // We'll increment receive count at the start of process(...)
+  // Revised process() method.
+  // In the column branch we simply propagate updates.
+  // In the row branch, before updating a row we check if it is already finalized.
+  // If so, we ignore the update.
   void process(pkg_topo_t pkg_ptr, int sender_rank) {
-    local_recv_count_++;  // <-- Count this as a received message
-
+    local_recv_count_++;
     if (pkg_ptr.row & type_mask) {
-      // Column message
-      int64_t curr_col = (pkg_ptr.col) / THREADS;
+      // Column message branch: propagate update messages.
+      int64_t curr_col = pkg_ptr.col / THREADS;
       int64_t col_level = pkg_ptr.level;
       pkg_topo_t new_pkg;
-
       for (int64_t idx = tmat->loffset[curr_col]; idx < tmat->loffset[curr_col + 1]; idx++) {
         int64_t row = tmat->lnonzero[idx];
-        new_pkg.row = row / THREADS;
-        new_pkg.col = curr_col * THREADS + MYTHREAD;
+        new_pkg.row = row / THREADS; // convert global row to local row index
+        new_pkg.col = curr_col * THREADS + MYTHREAD; // reconstruct global column index (should equal pkg_ptr.col)
         new_pkg.level = col_level;
         int64_t pe = row % THREADS;
         send(0, new_pkg, pe);
       }
-      r_and_c_done++;
-      OUTVAR(r_and_c_done); // Print after update
-      check_termination();
     } else {
-      // Row message
-      lrowsum[pkg_ptr.row] -= pkg_ptr.col;
-      outVariableToNewFile("lrowsum[" + to_string(pkg_ptr.row) + "]", lrowsum[pkg_ptr.row], __LINE__);
-
-      lrowcnt[pkg_ptr.row]--;
-      outVariableToNewFile("lrowcnt[" + to_string(pkg_ptr.row) + "]", lrowcnt[pkg_ptr.row], __LINE__);
-
-      if (pkg_ptr.level >= level[pkg_ptr.row]) {
-        level[pkg_ptr.row] = pkg_ptr.level + 1;
-        outVariableToNewFile("level[" + to_string(pkg_ptr.row) + "]", level[pkg_ptr.row], __LINE__);
+      // Row message branch.
+      int64_t row_index = pkg_ptr.row;  // local row index (type bit not set)
+      // NEW FIX: If this row has already been finalized, ignore further updates.
+      if (finalized[row_index]) {
+          return;
+      }
+      lrowsum[row_index] -= pkg_ptr.col;
+      outVariableToNewFile("lrowsum[" + to_string(row_index) + "]", lrowsum[row_index], __LINE__);
+      lrowcnt[row_index]--;
+      outVariableToNewFile("lrowcnt[" + to_string(row_index) + "]", lrowcnt[row_index], __LINE__);
+      if (pkg_ptr.level >= level[row_index]) {
+        level[row_index] = pkg_ptr.level + 1;
+        outVariableToNewFile("level[" + to_string(row_index) + "]", level[row_index], __LINE__);
         if ((pkg_ptr.level + 1) > num_levels)
           num_levels = pkg_ptr.level + 1;
       }
-
-      // One-degree row
-      if (lrowcnt[pkg_ptr.row] == 1) {
+      // When the row’s count becomes 1 and it is not finalized, mark it and send a column message.
+      if (lrowcnt[row_index] == 1 && !finalized[row_index]) {
+        finalized[row_index] = true;
+        pivot_count++;
         pkg_topo_t new_pkg;
-        int64_t row = pkg_ptr.row;
-        new_pkg.row = row | type_mask;
-        new_pkg.col = lrowsum[row];
-        new_pkg.level = level[row];
-        matched_col[row] = new_pkg.col;
-        outVariableToNewFile("matched_col[" + to_string(row) + "]", matched_col[row], __LINE__);
+        new_pkg.row = row_index | type_mask;
+        new_pkg.col = lrowsum[row_index];  // the only remaining column in this row
+        new_pkg.level = level[row_index];
+        matched_col[row_index] = new_pkg.col;
+        outVariableToNewFile("matched_col[" + to_string(row_index) + "]", matched_col[row_index], __LINE__);
         int64_t pe = new_pkg.col % THREADS;
         send(0, new_pkg, pe);
-        r_and_c_done++;
-        OUTVAR(r_and_c_done); // Print after update
-        check_termination();
       }
     }
-  }
-
-  // Accessors for send/receive counts
-  int64_t getMessageCount() const {
-      return local_send_count_;
-  }
-  int64_t getReceiveCount() const {
-      return local_recv_count_;
-  }
-
-  void check_termination() {
-    if (r_and_c_done == total_r_and_c) {
+    // Terminate when every local row is finalized.
+    if (pivot_count == lnr) {
       initiate_global_done();
     }
   }
 
+  int64_t getMessageCount() const { return local_send_count_; }
+  int64_t getReceiveCount() const { return local_recv_count_; }
+
+  // Constructor: allocate and initialize the finalized array.
   TopoSort(sparsemat_t *tmat, int64_t *lrowsum, int64_t *lrowcnt, int64_t *level,
-           int64_t *matched_col, int64_t lnr, int64_t lnc, int64_t r_and_c_done)
+           int64_t *matched_col, int64_t lnr, int64_t lnc)
       : tmat(tmat), lrowsum(lrowsum), lrowcnt(lrowcnt),
         level(level), matched_col(matched_col),
-        lnr(lnr), lnc(lnc), r_and_c_done(r_and_c_done) {
-
+        lnr(lnr), lnc(lnc), pivot_count(0)
+  {
+    finalized = (bool*)calloc(lnr, sizeof(bool));
+    for (int64_t i = 0; i < lnr; i++) {
+      finalized[i] = false;
+    }
     mb[0].process = [this](pkg_topo_t pkg, int sender_rank) {
       this->process(pkg, sender_rank);
     };
-    total_r_and_c = lnr + lnc;
   }
 
   int64_t getNumLevels() { return num_levels; }
+
+  ~TopoSort() { free(finalized); }
 };
 
+//----------------------------------------------------------------
+// CLASS TopoSortCPerm (unchanged)
+//----------------------------------------------------------------
 class TopoSortCPerm: public hclib::Selector<1, pkg_cperm_t> {
   int64_t *lcperm;
-
   void process(pkg_cperm_t pkg, int sender_rank) {
     lcperm[pkg.col/THREADS] = pkg.pos;
   }
-
 public:
   TopoSortCPerm(int64_t *lcperm) : lcperm(lcperm) {
-    mb[0].process = [this](pkg_cperm_t pkg, int sender_rank) { this->process(pkg, sender_rank); };
+    mb[0].process = [this](pkg_cperm_t pkg, int sender_rank) {
+      this->process(pkg, sender_rank);
+    };
   }
 };
 
+//----------------------------------------------------------------
+// toposort_matrix_selector()
+//----------------------------------------------------------------
 double toposort_matrix_selector(SHARED int64_t *rperm, SHARED int64_t *cperm,
                                 sparsemat_t *mat, sparsemat_t *tmat) {
   int64_t nr = mat->numrows;
   int64_t nc = mat->numcols;
-
-  // Initialize lnr and lnc to zero
-  int64_t lnr = 0;
-  int64_t lnc = 0;
-
-  // Compute lnr and lnc appropriately
-  lnr = (nr + THREADS - MYTHREAD - 1)/THREADS;
-  lnc = (nc + THREADS - MYTHREAD - 1)/THREADS;
-
-  int64_t * lrperm = lgp_local_part(int64_t, rperm);
-  int64_t * lcperm = lgp_local_part(int64_t, cperm);
-
+  // Compute number of local rows and columns.
+  int64_t lnr = (nr + THREADS - MYTHREAD - 1) / THREADS;
+  int64_t lnc = (nc + THREADS - MYTHREAD - 1) / THREADS;
+  int64_t *lrperm = lgp_local_part(int64_t, rperm);
+  int64_t *lcperm = lgp_local_part(int64_t, cperm);
   uint64_t type_mask = 0x8000000000000000;
-  int64_t * lrowqueue  = (int64_t*)calloc(lnr, sizeof(int64_t));
-  int64_t * lcolqueue  = (int64_t*)calloc(lnc, sizeof(int64_t));
-  int64_t * lcolqueue_level  = (int64_t*)calloc(lnc, sizeof(int64_t));
-  int64_t * lrowsum    = (int64_t*)calloc(lnr, sizeof(int64_t));
-  int64_t * lrowcnt    = (int64_t*)calloc(lnr, sizeof(int64_t));
-  int64_t * level      = (int64_t*)calloc(lnr, sizeof(int64_t));
-  int64_t * matched_col= (int64_t*)calloc(lnr, sizeof(int64_t));
+  int64_t *lrowqueue = (int64_t*)calloc(lnr, sizeof(int64_t));
+  int64_t *lcolqueue = (int64_t*)calloc(lnc, sizeof(int64_t));
+  int64_t *lcolqueue_level = (int64_t*)calloc(lnc, sizeof(int64_t));
+  int64_t *lrowsum = (int64_t*)calloc(lnr, sizeof(int64_t));
+  int64_t *lrowcnt = (int64_t*)calloc(lnr, sizeof(int64_t));
+  int64_t *level = (int64_t*)calloc(lnr, sizeof(int64_t));
+  int64_t *matched_col = (int64_t*)calloc(lnr, sizeof(int64_t));
 
   int64_t initial_rowlast = 0;
-
-  for(int64_t i = 0; i < mat->lnumrows; i++){
+  // Initialize each local row's lrowsum and lrowcnt.
+  for (int64_t i = 0; i < mat->lnumrows; i++) {
     lrowsum[i] = 0L;
     lrowcnt[i] = mat->loffset[i+1] - mat->loffset[i];
-    if(lrowcnt[i] == 1){
+    if (lrowcnt[i] == 1) {
       lrowqueue[initial_rowlast++] = i;
       level[i] = 0;
     }
-    for(int64_t j = mat->loffset[i]; j < mat->loffset[i+1]; j++)
+    for (int64_t j = mat->loffset[i]; j < mat->loffset[i+1]; j++)
       lrowsum[i] += mat->lnonzero[j];
   }
-
-  int64_t r_and_c_done = initial_rowlast;
-  OUTVAR(r_and_c_done);
+  OUTVAR(initial_rowlast);
 
   int64_t num_levels = 0;
+  // Create the TopoSort selector.
   TopoSort *topo = new TopoSort(tmat, lrowsum, lrowcnt, level, matched_col,
-                                lnr, lnc, r_and_c_done);
-
+                                lnr, lnc);
   lgp_barrier();
-
   double t1 = wall_seconds();
 
-  // Start the selector and send initial messages
+  // Start the selector and send initial messages.
   hclib::finish([=, &initial_rowlast]() {
     topo->start();
     pkg_topo_t pkg_ptr;
     int64_t row, pe;
     for (int64_t i = 0; i < initial_rowlast; i++) {
-      row = pkg_ptr.row = lrowqueue[i];
-      pkg_ptr.row |= type_mask;
+      row = lrowqueue[i];
+      // Mark initially degree-one rows as finalized.
+      topo->mark_finalized(row);
+      pkg_ptr.row = row | type_mask;
       pkg_ptr.col = lrowsum[row];
       pkg_ptr.level = level[row];
       matched_col[row] = pkg_ptr.col;
-      outVariableToNewFile("matched_col[" + to_string(row) + "]",
-                           matched_col[row], __LINE__);
+      outVariableToNewFile("matched_col[" + to_string(row) + "]", matched_col[row], __LINE__);
       pe = pkg_ptr.col % THREADS;
       topo->send(0, pkg_ptr, pe);
     }
   });
 
-  // Print global total of toposort messages *sent*
+  // Print debug information on messages sent/received.
   {
     int64_t local_sends = topo->getMessageCount();
     int64_t total_sends = lgp_reduce_add_l(local_sends);
@@ -313,8 +314,6 @@ double toposort_matrix_selector(SHARED int64_t *rperm, SHARED int64_t *cperm,
       printf("Total toposort messages *sent*: %ld\n", total_sends);
     }
   }
-
-  // Print global total of toposort messages *received*
   {
     int64_t local_recvs = topo->getReceiveCount();
     int64_t total_recvs = lgp_reduce_add_l(local_recvs);
@@ -322,90 +321,72 @@ double toposort_matrix_selector(SHARED int64_t *rperm, SHARED int64_t *cperm,
       printf("Total toposort messages *received*: %ld\n", total_recvs);
     }
   }
-
   num_levels = topo->getNumLevels();
   delete topo;
+  num_levels++;  // Account for level numbering
 
-  num_levels++;
-
-  // Check variables AFTER finish
+  // Dump final values for debugging.
   {
     string final_check_file = folder_name + "/final_values_pe" + to_string(MYTHREAD) + ".txt";
     ofstream final_output(final_check_file, ios::app);
     if (final_output.is_open()) {
-        for (int64_t i = 0; i < lnr; i++) {
-            final_output << "lrowsum[" << i << "]: " << lrowsum[i] << endl;
-            final_output << "lrowcnt[" << i << "]: " << lrowcnt[i] << endl;
-            final_output << "level[" << i << "]: " << level[i] << endl;
-            final_output << "matched_col[" << i << "]: " << matched_col[i] << endl;
-        }
-        final_output << "r_and_c_done: " << r_and_c_done << endl;
-        final_output << "num_levels: " << num_levels << endl;
-        final_output.close();
+      for (int64_t i = 0; i < lnr; i++) {
+        final_output << "lrowsum[" << i << "]: " << lrowsum[i] << endl;
+        final_output << "lrowcnt[" << i << "]: " << lrowcnt[i] << endl;
+        final_output << "level[" << i << "]: " << level[i] << endl;
+        final_output << "matched_col[" << i << "]: " << matched_col[i] << endl;
+      }
+      final_output << "num_levels: " << num_levels << endl;
+      final_output.close();
     } else {
-        printf("Failed to write final values to output file.\n");
+      printf("Failed to write final values to output file.\n");
     }
   }
 
-  /* At this point, we know for each row its level and the column it was matched with.
-     We need to create cperm and rperm from this information */
+  // Build the row permutation (rperm) from levels.
   num_levels = lgp_reduce_max_l(num_levels);
-
-  // Allocate level_sizes and level_start
-  int64_t * level_sizes = (int64_t*)calloc(num_levels, sizeof(int64_t));
-  int64_t * level_start = (int64_t*)calloc(num_levels, sizeof(int64_t));
-
-  // Count level sizes locally
-  for(int64_t i = 0; i < lnr; i++){
+  int64_t *level_sizes = (int64_t*)calloc(num_levels, sizeof(int64_t));
+  int64_t *level_start = (int64_t*)calloc(num_levels, sizeof(int64_t));
+  for (int64_t i = 0; i < lnr; i++) {
     level_sizes[level[i]]++;
   }
-
-  // Compute level_start and total sizes using SHMEM operations
   int64_t total = 0;
-  for(int64_t i = 0; i < num_levels; i++){
+  for (int64_t i = 0; i < num_levels; i++) {
     level_start[i] = total + lgp_prior_add_l(level_sizes[i]);
     level_sizes[i] = lgp_reduce_add_l(level_sizes[i]);
     total += level_sizes[i];
   }
-
   lgp_barrier();
-
-  // Use local array to keep track of positions without modifying symmetric arrays
-  int64_t * my_level_start = (int64_t*)malloc(num_levels * sizeof(int64_t));
-  for(int64_t i = 0; i < num_levels; i++){
+  int64_t *my_level_start = (int64_t*)malloc(num_levels * sizeof(int64_t));
+  for (int64_t i = 0; i < num_levels; i++) {
     my_level_start[i] = level_start[i];
   }
-
-  // Assign lrperm using local my_level_start array
-  for(int64_t i = 0; i < lnr; i++){
+  for (int64_t i = 0; i < lnr; i++) {
     lrperm[i] = (nr - 1) - my_level_start[level[i]];
     my_level_start[level[i]]++;
   }
-
   free(my_level_start);
 
-  // Now proceed to compute lcperm using TopoSortCPerm
   TopoSortCPerm *topocperm = new TopoSortCPerm(lcperm);
   hclib::finish([=]() {
     topocperm->start();
-    for(int64_t i = 0; i < lnr; i++) {
+    for (int64_t i = 0; i < lnr; i++) {
       pkg_cperm_t pkg;
       pkg.pos = lrperm[i];
       pkg.col = matched_col[i];
-      int64_t pe  = pkg.col % THREADS;
+      int64_t pe = pkg.col % THREADS;
       topocperm->send(0, pkg, pe);
     }
     topocperm->done(0);
   });
-
   delete topocperm;
   lgp_barrier();
 
   minavgmaxD_t stat[1];
   t1 = wall_seconds() - t1;
-  lgp_min_avg_max_d( stat, t1, THREADS );
+  lgp_min_avg_max_d(stat, t1, THREADS);
 
-  // Free local arrays allocated with calloc()
+  // Free local arrays.
   free(lrowcnt);
   free(lrowsum);
   free(lrowqueue);
@@ -416,9 +397,8 @@ double toposort_matrix_selector(SHARED int64_t *rperm, SHARED int64_t *cperm,
   free(level_sizes);
   free(level_start);
 
-  return(stat->avg);
+  return stat->avg;
 }
-
 
 /*!
 \page toposort_page Toposort
@@ -514,7 +494,6 @@ topo [-h][-b count][-M mask][-n num][-f filename][-Z num][-e prob][-D]\n\
 }
 
 /*! \brief check the result of toposort
-
  * Check that the permutations are in fact permutations and that applying
  * them to the original matrix yields an upper triangular matrix
  * \param mat the original matrix
@@ -526,15 +505,14 @@ topo [-h][-b count][-M mask][-n num][-f filename][-Z num][-e prob][-D]\n\
 int check_is_triangle(sparsemat_t * mat, SHARED int64_t * rperminv, SHARED int64_t * cperminv, int64_t dump_files) {
   sparsemat_t * mat2;
   int ret = 0;
-
   int rf = is_perm(rperminv, mat->numrows);
   int cf = is_perm(cperminv, mat->numcols);
-  if(!rf || !cf){
-    T0_fprintf(stderr,"ERROR: check_is_triangle is_perm(rperminv2) = %d is_perm(cperminv2) = %d\n",rf,cf);
+  if (!rf || !cf) {
+    T0_fprintf(stderr,"ERROR: check_is_triangle is_perm(rperminv2) = %d is_perm(cperminv2) = %d\n", rf, cf);
     return(1);
   }
   mat2 = permute_matrix(mat, rperminv, cperminv);
-  if(!is_upper_triangular(mat2, 1)) {
+  if (!is_upper_triangular(mat2, 1)) {
     T0_fprintf(stderr,"ERROR: check_is_triangle fails\n");
     ret = 1;
   }
@@ -553,137 +531,108 @@ int check_is_triangle(sparsemat_t * mat, SHARED int64_t * rperminv, SHARED int64
 sparsemat_t * generate_toposort_input(int64_t numrows, double prob, int64_t rand_seed) {
   sparsemat_t * omat;
   int64_t numcols = numrows;
-
   double t = wall_seconds();
   omat = transpose_matrix(erdos_renyi_random_graph(numrows, prob, UNDIRECTED, LOOPS, rand_seed));
   T0_printf("generate ER graph time %lf\n", wall_seconds() - t);
-  if(!omat) exit(1);
-  if(!is_upper_triangular(omat, 1)) exit(1);
-
-  // get row and column permutations
+  if (!omat) exit(1);
+  if (!is_upper_triangular(omat, 1)) exit(1);
   t = wall_seconds();
   SHARED int64_t * rperminv = rand_permp(numrows, 1230+MYTHREAD);
   SHARED int64_t * cperminv = rand_permp(numcols, 45+MYTHREAD);
   T0_printf("generate perms time %lf\n", wall_seconds() - t);
   lgp_barrier();
-
-  if(!rperminv || !cperminv){
+  if (!rperminv || !cperminv) {
     T0_printf("ERROR: topo_rand_permp returns NULL!\n"); fflush(0);
     return(NULL);
   }
-
   lgp_barrier();
   t = wall_seconds();
   sparsemat_t * mat = permute_matrix(omat, rperminv, cperminv);
   T0_printf("permute matrix time %lf\n", wall_seconds() - t);
-
-  if(!mat) {
+  if (!mat) {
     T0_printf("ERROR: permute_matrix returned NULL"); fflush(0);
     return(NULL);
   }
-
   lgp_barrier();
-
   clear_matrix(omat);
   free(omat);
   lgp_all_free(rperminv);
   lgp_all_free(cperminv);
-
   return(mat);
 }
 
 int main(int argc, char * argv[]) {
   const char *deps[] = { "system", "bale_actor" };
   hclib::launch(deps, 2, [=] {
-  
-  // Reset outputs folder
-  setupOutputDirectory();
-  int64_t i, j, fromth, lnnz, start, end;
-  int64_t pe, row, col, idx;
-  double t1;
-
-  int64_t l_numrows = 100000;
-  double  nz_per_row = 10;
-  int64_t buf_cnt = 1024;
-  int64_t rand_seed =  MYTHREAD*MYTHREAD*10000 + 5;
-  int64_t numrows, numcols;
-  int64_t pos = 0;
-
-  double erdos_renyi_prob = 0.0;
-  int64_t models_mask = ALL_Models;
-  int64_t printhelp = 0;
-  int64_t read_graph = 0;
-  char filename[64];
-  int64_t dump_files = 0;
-  int64_t cores_per_node = 1;
-
-  int opt;
-  while( (opt = getopt(argc, argv, "hb:c:M:n:f:Z:p:")) != -1 ) {
-    switch(opt) {
-    case 'h': printhelp = 1; break;
-    case 'b': sscanf(optarg,"%ld" , &buf_cnt);  break;
-    case 'c': sscanf(optarg,"%ld" ,&cores_per_node); break;
-    case 'M': sscanf(optarg,"%ld" , &models_mask);  break;
-    case 'n': sscanf(optarg,"%ld" , &l_numrows);  break;
-    case 'f': read_graph = 1; sscanf(optarg,"%s", filename); break;
-
-    case 'Z': sscanf(optarg,"%lf" , &nz_per_row);  break;
-    case 'e': sscanf(optarg,"%lf" , &erdos_renyi_prob);  break;
-    case 'D': dump_files = 1; break;
-    default:  break;
+    setupOutputDirectory();
+    int64_t i, j, fromth, lnnz, start, end;
+    int64_t pe, row, col, idx;
+    double t1;
+    int64_t l_numrows = 100000;
+    double nz_per_row = 10;
+    int64_t buf_cnt = 1024;
+    int64_t rand_seed = MYTHREAD*MYTHREAD*10000 + 5;
+    int64_t numrows, numcols;
+    int64_t pos = 0;
+    double erdos_renyi_prob = 0.0;
+    int64_t models_mask = ALL_Models;
+    int64_t printhelp = 0;
+    int64_t read_graph = 0;
+    char filename[64];
+    int64_t dump_files = 0;
+    int64_t cores_per_node = 1;
+    int opt;
+    while ((opt = getopt(argc, argv, "hb:c:M:n:f:Z:p:")) != -1) {
+      switch(opt) {
+        case 'h': printhelp = 1; break;
+        case 'b': sscanf(optarg,"%ld", &buf_cnt); break;
+        case 'c': sscanf(optarg,"%ld", &cores_per_node); break;
+        case 'M': sscanf(optarg,"%ld", &models_mask); break;
+        case 'n': sscanf(optarg,"%ld", &l_numrows); break;
+        case 'f': read_graph = 1; sscanf(optarg,"%s", filename); break;
+        case 'Z': sscanf(optarg,"%lf", &nz_per_row); break;
+        case 'e': sscanf(optarg,"%lf", &erdos_renyi_prob); break;
+        case 'D': dump_files = 1; break;
+        default: break;
+      }
     }
-  }
-  if(printhelp) usage();
-
-  numrows = l_numrows * THREADS;
-  numcols = numrows;
-  if(erdos_renyi_prob == 0.0){ // use nz_per_row to get erdos_renyi_prob
-    erdos_renyi_prob = (2.0*nz_per_row)/(numrows - 1);
-    if(erdos_renyi_prob > 1.0)
-      erdos_renyi_prob = 1.0;
-  } else {                     // use erdos_renyi_prob to get nz_per_row
-    nz_per_row = erdos_renyi_prob * numrows;
-  }
-
-  T0_fprintf(stderr,"Running toposort on %d threads\n", THREADS);
-  T0_fprintf(stderr,"buf_cnt (stack size)           (-b)   %ld\n", buf_cnt);
-  T0_fprintf(stderr,"Number of rows per thread      (-n)   %ld\n", l_numrows);
-  T0_fprintf(stderr,"Avg # of nonzeros per row      (-Z)   %2.2lf\n", nz_per_row);
-  T0_fprintf(stderr,"Erdos-Renyi edge probability   (-e)   %lf\n", erdos_renyi_prob);
-  T0_fprintf(stderr,"task mask (M) = %ld (should be 1,2,4,8,16 for agi, exstack, exstack2, conveyor, alternate\n", models_mask);
-
-  sparsemat_t * mat = generate_toposort_input(numrows, erdos_renyi_prob, rand_seed);
-  if(!mat){T0_printf("ERROR: mat is NULL!\n"); exit(1);}
-
-  T0_printf("Input matrix has %ld rows and %ld nonzeros\n", mat->numrows, mat->nnz);
-
-  sparsemat_t * tmat = transpose_matrix(mat);
-  if(!tmat){T0_printf("ERROR: tmat is NULL!\n"); exit(1);}
-
-  lgp_barrier();
-
-  T0_fprintf(stderr,"Run toposort on mat (and tmat) ...\n");
-  // arrays to hold the row and col permutations
-  SHARED int64_t *rperminv2 = (int64_t*)lgp_all_alloc(numrows, sizeof(int64_t));
-  SHARED int64_t *cperminv2 = (int64_t*)lgp_all_alloc(numcols, sizeof(int64_t));
-
-  double laptime = 0.0;
-
-  T0_fprintf(stderr," Selector: \n");
-  laptime = toposort_matrix_selector(rperminv2, cperminv2, mat, tmat);
-
-  lgp_barrier();
-  T0_fprintf(stderr,"  %8.3lf seconds\n", laptime);
-
-  if( check_is_triangle(mat, rperminv2, cperminv2, dump_files) ) {
-    printf("\nERROR: After toposort_matrix_selector: mat2 is not upper-triangular!\n");
-  } else {
-    printf("\nVERIFIED\n");
-  }
-
-  lgp_barrier();
-  lgp_finalize();
+    if (printhelp) usage();
+    numrows = l_numrows * THREADS;
+    numcols = numrows;
+    if (erdos_renyi_prob == 0.0) {
+      erdos_renyi_prob = (2.0 * nz_per_row) / (numrows - 1);
+      if (erdos_renyi_prob > 1.0)
+        erdos_renyi_prob = 1.0;
+    } else {
+      nz_per_row = erdos_renyi_prob * numrows;
+    }
+    T0_fprintf(stderr, "Running toposort on %d threads\n", THREADS);
+    T0_fprintf(stderr, "buf_cnt (stack size)           (-b)   %ld\n", buf_cnt);
+    T0_fprintf(stderr, "Number of rows per thread      (-n)   %ld\n", l_numrows);
+    T0_fprintf(stderr, "Avg # of nonzeros per row      (-Z)   %2.2lf\n", nz_per_row);
+    T0_fprintf(stderr, "Erdos-Renyi edge probability   (-e)   %lf\n", erdos_renyi_prob);
+    T0_fprintf(stderr, "task mask (M) = %ld (should be 1,2,4,8,16 for agi, exstack, exstack2, conveyor, alternate\n", models_mask);
+    sparsemat_t *mat = generate_toposort_input(numrows, erdos_renyi_prob, rand_seed);
+    if (!mat) { T0_printf("ERROR: mat is NULL!\n"); exit(1); }
+    T0_printf("Input matrix has %ld rows and %ld nonzeros\n", mat->numrows, mat->nnz);
+    sparsemat_t *tmat = transpose_matrix(mat);
+    if (!tmat) { T0_printf("ERROR: tmat is NULL!\n"); exit(1); }
+    lgp_barrier();
+    T0_fprintf(stderr, "Run toposort on mat (and tmat) ...\n");
+    SHARED int64_t *rperminv2 = (int64_t*)lgp_all_alloc(numrows, sizeof(int64_t));
+    SHARED int64_t *cperminv2 = (int64_t*)lgp_all_alloc(numcols, sizeof(int64_t));
+    double laptime = 0.0;
+    T0_fprintf(stderr, " Selector: \n");
+    laptime = toposort_matrix_selector(rperminv2, cperminv2, mat, tmat);
+    lgp_barrier();
+    T0_fprintf(stderr, "  %8.3lf seconds\n", laptime);
+    if (check_is_triangle(mat, rperminv2, cperminv2, dump_files)) {
+      printf("\nERROR: After toposort_matrix_selector: mat2 is not upper-triangular!\n");
+    } else {
+      printf("\nVERIFIED\n");
+    }
+    lgp_barrier();
+    lgp_finalize();
   });
-
-  return(0);
+  return 0;
 }

@@ -1,0 +1,16 @@
+PE[0] [lrowsum[147]][179] 1996
+PE[0] [lrowsum[147]][179] 1880
+PE[0] [lrowsum[147]][179] 1736
+PE[0] [lrowsum[147]][179] 1606
+PE[0] [lrowsum[147]][179] 1472
+PE[0] [lrowsum[147]][179] 1350
+PE[0] [lrowsum[147]][179] 1235
+PE[0] [lrowsum[147]][179] 1117
+PE[0] [lrowsum[147]][179] 1043
+PE[0] [lrowsum[147]][179] 1039
+PE[0] [lrowsum[147]][179] 837
+PE[0] [lrowsum[147]][179] 656
+PE[0] [lrowsum[147]][179] 518
+PE[0] [lrowsum[147]][179] 361
+PE[0] [lrowsum[147]][179] 166
+PE[0] [lrowsum[147]][179] 127
