@@ -179,14 +179,14 @@ double toposort_matrix_selector(SHARED int64_t *rperm, SHARED int64_t *cperm, sp
     int64_t colstart, colend;
     rownext = rowlast = colnext = collast = colstart = colend = 0;
 
-    for(int i = 0; i < mat->lnumrows; i++){
+    for(int64_t i = 0; i < mat->lnumrows; i++){
         lrowsum[i] = 0L;
         lrowcnt[i] = mat->loffset[i+1] - mat->loffset[i];
         if(lrowcnt[i] == 1){
             lrowqueue[rowlast++] = i;
             level[i] = 0;
         }
-        for(int j = mat->loffset[i]; j < mat->loffset[i+1]; j++)
+        for(int64_t j = mat->loffset[i]; j < mat->loffset[i+1]; j++)
             lrowsum[i] += mat->lnonzero[j];
     }
 
@@ -199,7 +199,7 @@ double toposort_matrix_selector(SHARED int64_t *rperm, SHARED int64_t *cperm, sp
         topo->start();
         pkg_topo_t pkg;
         int64_t row, pe;
-        for (int i = 0; i < rowlast; i++) {
+        for (int64_t i = 0; i < rowlast; i++) {
             row = pkg.row = lrowqueue[i];
             topo->mark_finalized(row);
             pkg.row |= type_mask;
@@ -223,11 +223,11 @@ double toposort_matrix_selector(SHARED int64_t *rperm, SHARED int64_t *cperm, sp
     int64_t * level_start = (int64_t*)calloc(num_levels, sizeof(int64_t));
 
     int64_t total = 0;
-    for(int i = 0; i < lnr; i++){
+    for(int64_t i = 0; i < lnr; i++){
         level_sizes[level[i]]++;
     }
 
-    for(int i = 0; i < num_levels; i++){
+    for(int64_t i = 0; i < num_levels; i++){
         level_start[i] = total + lgp_prior_add_l(level_sizes[i]);
         level_sizes[i] = lgp_reduce_add_l(level_sizes[i]);
         total += level_sizes[i];
@@ -235,14 +235,14 @@ double toposort_matrix_selector(SHARED int64_t *rperm, SHARED int64_t *cperm, sp
 
     lgp_barrier();
 
-    for(int i = 0; i < lnr; i++){
+    for(int64_t i = 0; i < lnr; i++){
         lrperm[i] = (nr - 1) - level_start[level[i]]++;
     }
 
     TopoSortCPerm *topocperm = new TopoSortCPerm(lcperm);
     hclib::finish([=]() {
         topocperm->start();
-        for(int i = 0; i < lnr; i++) {
+        for(int64_t i = 0; i < lnr; i++) {
             pkg_cperm_t pkg;
             pkg.pos = lrperm[i];
             pkg.col = matched_col[i];
