@@ -134,7 +134,7 @@ private:
             }
         }
 
-        if (pivot_count == lnr) {
+        if (pivot_count >= lnr) {
             initiate_global_done();
         }
     }
