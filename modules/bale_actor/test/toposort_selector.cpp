@@ -229,9 +229,6 @@ public:
   ~TopoSort() { free(finalized); }
 };
 
-//----------------------------------------------------------------
-// CLASS TopoSortCPerm (unchanged)
-//----------------------------------------------------------------
 class TopoSortCPerm: public hclib::Selector<1, pkg_cperm_t> {
   int64_t *lcperm;
   void process(pkg_cperm_t pkg, int sender_rank) {
@@ -245,9 +242,6 @@ public:
   }
 };
 
-//----------------------------------------------------------------
-// toposort_matrix_selector()
-//----------------------------------------------------------------
 double toposort_matrix_selector(SHARED int64_t *rperm, SHARED int64_t *cperm,
                                 sparsemat_t *mat, sparsemat_t *tmat) {
   int64_t nr = mat->numrows;
