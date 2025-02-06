@@ -125,7 +125,7 @@ private:
                 pivot_count++;
                 // create a new package
                 pkg_topo_t pkg;
-                pkg.row |= type_mask;
+                pkg.row = row | type_mask;
                 pkg.col = lrowsum[row];
                 pkg.level = level[row];
                 matched_col[row] = pkg.col;
