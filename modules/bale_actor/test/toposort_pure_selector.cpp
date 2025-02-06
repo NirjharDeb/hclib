@@ -59,7 +59,11 @@ typedef struct pkg_cperm_t {
 
 class TopoSort: public hclib::Selector<1, pkg_topo_t> {
 public:
-    TopoSort(sparsemat_t *tmat, int64_t *lrowsum, int64_t *lrowcnt, int64_t *level, int64_t *matched_col, int64_t r_and_c_done, int64_t lnc, int64_t lnr): tmat(tmat), lrowsum(lrowsum), lrowcnt(lrowcnt), level(level), matched_col(matched_col), r_and_c_done(r_and_c_done), lnc(lnc), lnr(lnr) {
+    TopoSort(sparsemat_t *tmat, int64_t *lrowsum, int64_t *lrowcnt, int64_t *level, int64_t *matched_col, int64_t lnc, int64_t lnr): tmat(tmat), lrowsum(lrowsum), lrowcnt(lrowcnt), level(level), matched_col(matched_col), lnc(lnc), lnr(lnr), pivot_count(0) {
+        finalized = (bool*) calloc(lnr, sizeof(bool));
+        for (int64_t i = 0; i < lnr; i++) {
+            finalized[i] = false;
+        }
         mb[0].process = [this](pkg_topo_t pkg, int sender_rank) { this->process0(pkg, sender_rank); };
     }
     int64_t getNumLevels() { return num_levels; }
@@ -74,10 +78,21 @@ private:
     int64_t num_levels = 0;
     uint64_t type_mask = 0x8000000000000000;
 
-    int64_t r_and_c_done;
     int64_t lnc;
     int64_t lnr;
 
+    int64_t pivot_count;
+    bool *finalized;
+
+public:
+    void mark_finalized(int64_t row) {
+        if (!finalized[row]) {
+            finalized[row] = true;
+            pivot_count++;
+        }
+    }
+
+private:
     void process0(pkg_topo_t pkg_ptr, int sender_rank) {
         if (pkg_ptr.row & type_mask) {
             int64_t curr_col = (pkg_ptr.col)/THREADS;
@@ -91,11 +106,10 @@ private:
                 int64_t pe = row % THREADS;
                 send(0, pkg, pe);
             }
-            r_and_c_done++;
-            if (r_and_c_done == (lnr+lnc)) {
-                done(0);
-            }
         } else {
+            if (finalized[pkg_ptr.row]) {
+                return;
+            }
             lrowsum[pkg_ptr.row] -= pkg_ptr.col;
             lrowcnt[pkg_ptr.row]--;
             /* update the level for this row */
@@ -104,9 +118,11 @@ private:
                 if((pkg_ptr.level+1) > num_levels)
                     num_levels = pkg_ptr.level + 1;
             }
-            if(lrowcnt[pkg_ptr.row] == 1){
+            if(lrowcnt[pkg_ptr.row] == 1 && !finalized[pkg_ptr.row]){
                 // now row is a one-degree row
                 int64_t row = pkg_ptr.row;
+                finalized[row] = true;
+                pivot_count++;
                 // create a new package
                 pkg_topo_t pkg;
                 pkg.row |= type_mask;
@@ -115,11 +131,11 @@ private:
                 matched_col[row] = pkg.col;
                 int64_t pe = pkg.col % THREADS;
                 send(0, pkg, pe);
-                r_and_c_done++;
-                if (r_and_c_done == (lnr+lnc)) {
-                    done(0);
-                }
             }
+        }
+
+        if (pivot_count == lnr) {
+            initiate_global_done();
         }
     }
 
@@ -174,9 +190,8 @@ double toposort_matrix_selector(SHARED int64_t *rperm, SHARED int64_t *cperm, sp
             lrowsum[i] += mat->lnonzero[j];
     }
 
-    int64_t r_and_c_done = rowlast;
     int64_t num_levels = 0;
-    TopoSort *topo = new TopoSort(tmat, lrowsum, lrowcnt, level, matched_col, r_and_c_done, lnc, lnr);
+    TopoSort *topo = new TopoSort(tmat, lrowsum, lrowcnt, level, matched_col, lnc, lnr);
 
     lgp_barrier();
     double t1 = wall_seconds();
@@ -186,6 +201,7 @@ double toposort_matrix_selector(SHARED int64_t *rperm, SHARED int64_t *cperm, sp
         int64_t row, pe;
         for (int i = 0; i < rowlast; i++) {
             row = pkg.row = lrowqueue[i];
+            topo->mark_finalized(row);
             pkg.row |= type_mask;
             pkg.col = lrowsum[row];
             pkg.level = level[row];
