@@ -64,6 +64,7 @@ public:
         for (int64_t i = 0; i < lnr; i++) {
             finalized[i] = false;
         }
+        terminated = false;
         mb[0].process = [this](pkg_topo_t pkg, int sender_rank) { this->process0(pkg, sender_rank); };
     }
     int64_t getNumLevels() { return num_levels; }
@@ -83,6 +84,8 @@ private:
 
     int64_t pivot_count;
     bool *finalized;
+
+    bool terminated;
 
 public:
     void mark_finalized(int64_t row) {
@@ -134,7 +137,8 @@ private:
             }
         }
 
-        if (pivot_count >= lnr) {
+        if (pivot_count >= lnr && !terminated) {
+            terminated = true;
             initiate_global_done();
         }
     }
