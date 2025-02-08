@@ -44,10 +44,15 @@ class safe_buffer {
     }
 
     void push_back(const T& val) {
-#ifdef USE_LOCK
-        std::lock_guard<std::mutex> lg(mtx); 
-#endif
-        cb.push_back(val);
+        #ifdef USE_LOCK
+                std::lock_guard<std::mutex> lg(mtx);
+        #endif
+                cb.push_back(val);
+        #if 1
+                if (cb.full()) {
+                    cb.set_capacity(cb.size()*2);
+                }
+        #endif
     }
 
     T& operator [](size_t index) {
