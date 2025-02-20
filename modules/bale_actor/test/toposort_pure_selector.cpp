@@ -93,6 +93,10 @@ public:
             finalized[row] = true;
             pivot_count++;
         }
+        if (pivot_count >= lnr && !terminated) {
+            terminated = true;
+            initiate_global_done();
+        }
     }
 
 private:
@@ -124,8 +128,7 @@ private:
             if(lrowcnt[pkg_ptr.row] == 1 && !finalized[pkg_ptr.row]){
                 // now row is a one-degree row
                 int64_t row = pkg_ptr.row;
-                finalized[row] = true;
-                pivot_count++;
+                mark_finalized(row);
                 // create a new package
                 pkg_topo_t pkg;
                 pkg.row = row | type_mask;
@@ -135,12 +138,7 @@ private:
                 int64_t pe = pkg.col % THREADS;
                 send(0, pkg, pe);
             }
-        }
-
-        if (pivot_count >= lnr && !terminated) {
-            terminated = true;
-            initiate_global_done();
-        }
+        }       
     }
 
 };
