@@ -60,9 +60,6 @@ typedef struct pkg_cperm_t {
     int64_t col;
 } pkg_cperm_t;
 
-//---------------------------------------------------------------------
-// TopoSort: maintains per-object message counters and logs only toposort messages
-//---------------------------------------------------------------------
 class TopoSort: public hclib::Selector<1, pkg_topo_t> {
 public:
     TopoSort(sparsemat_t *tmat, int64_t *lrowsum, int64_t *lrowcnt, int64_t *level,
@@ -79,7 +76,6 @@ public:
         };
     }
     int64_t getNumLevels() { return num_levels; }
-    // Accessor functions for per-object message counts.
     int64_t getMessageCount() const { return local_send_count_; }
     int64_t getReceiveCount() const { return local_recv_count_; }
     
@@ -97,13 +93,11 @@ private:
     bool *finalized;
     bool terminated;
     
-    // Per-object message counters for toposort messages.
     int64_t local_send_count_ = 0;
     int64_t local_recv_count_ = 0;
     
 public:
     using hclib::Selector<1, pkg_topo_t>::send;
-    // Override send() to count sent messages.
     void send(int slot, pkg_topo_t item, int receiver) {
         local_send_count_++;
         hclib::Selector<1, pkg_topo_t>::send(slot, item, receiver);
@@ -162,13 +156,9 @@ private:
     }
 };
 
-//---------------------------------------------------------------------
-// TopoSortCPerm: remains unchanged (we do not override its send)
-//---------------------------------------------------------------------
 class TopoSortCPerm: public hclib::Selector<1, pkg_cperm_t> {
     int64_t *lcperm;
     void process(pkg_cperm_t pkg, int sender_rank) {
-        // We do not log messages for TopoSortCPerm.
         lcperm[pkg.col/THREADS] = pkg.pos;
     }
 public:
@@ -236,7 +226,6 @@ double toposort_matrix_selector(SHARED int64_t *rperm, SHARED int64_t *cperm,
     });
     
     num_levels = topo->getNumLevels();
-    // Capture the per-object message counts before deletion if needed:
     int64_t local_sends = topo->getMessageCount();
     int64_t local_recvs = topo->getReceiveCount();
     delete topo;
@@ -305,11 +294,6 @@ double toposort_matrix_selector(SHARED int64_t *rperm, SHARED int64_t *cperm,
     
     return stat->avg;
 }
-
-/*!
-  \page toposort_page Toposort
-  [Documentation omitted for brevity]
-*/
 
 static void usage(void) {
     T0_fprintf(stderr,"\

@@ -71,11 +71,9 @@ class TopoSort: public hclib::Selector<1, pkg_topo_t> {
   int64_t *rowlast;
   int64_t *collast;
   
-  // New per-object message counters for toposort
   int64_t local_send_count_ = 0;
   int64_t local_recv_count_ = 0;
   
-  // Revised process() method: count received messages using our local counter.
   void process0(pkg_topo_t pkg_ptr, int sender_rank) {
     local_recv_count_++;
     if (pkg_ptr.row & type_mask) {
@@ -97,7 +95,6 @@ class TopoSort: public hclib::Selector<1, pkg_topo_t> {
   }
 public:
   using hclib::Selector<1, pkg_topo_t>::send;
-  // Override send() so that each sent message is counted.
   void send(int slot, pkg_topo_t item, int receiver) {
       local_send_count_++;
       hclib::Selector<1, pkg_topo_t>::send(slot, item, receiver);
@@ -122,7 +119,6 @@ public:
 class TopoSortCPerm: public hclib::Selector<1, pkg_cperm_t> {
   int64_t *lcperm;
   void process(pkg_cperm_t pkg, int sender_rank) {
-    // We do not log messages for TopoSortCPerm.
     lcperm[pkg.col/THREADS] = pkg.pos;
   }
 public:
@@ -193,7 +189,6 @@ double toposort_matrix_selector(SHARED int64_t *rperm, SHARED int64_t *cperm,
         pkg.level = level[row];
         matched_col[row] = pkg.col;
         pe = pkg.col % THREADS;
-        // Use the overridden send() that now counts messages.
         topo->send(0, pkg, pe);
         r_and_c_done++;
         rownext++;
@@ -222,7 +217,6 @@ double toposort_matrix_selector(SHARED int64_t *rperm, SHARED int64_t *cperm,
     topo->done(0);
   });
   
-  // Get the send/receive counts before deleting topo.
   int64_t local_sends = topo->getMessageCount();
   int64_t local_recvs = topo->getReceiveCount();
   num_levels = topo->getNumLevels();
