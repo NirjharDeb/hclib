@@ -147,7 +147,7 @@ private:
         }
         
         // globally terminate once we've reached the required hits
-        if (*hits_ >= lN_) { initiate_global_done(); }
+        if (*hits_ >= lN_) { initiate_global_done_v2(); }
     }
 };
 

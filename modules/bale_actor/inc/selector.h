@@ -679,6 +679,125 @@ class Selector {
         *LOCAL_DONE = 0;
     }
 
+    static inline int ceil_div(int a, int b) { return (a + b - 1) / b; }
+
+    static inline int ipow(int base, int exp) {
+        int r = 1;
+        while (exp-- > 0) r *= base;
+        return r;
+    }
+
+    static inline int group_span_at_level(int leaf_size, int k, int level) {
+        return leaf_size * ipow(k, level);
+    }
+
+    static inline int static_group_owner_pe(int leaf_size, int k, int level, int group_idx) {
+        return group_idx * group_span_at_level(leaf_size, k, level);
+    }
+
+    int env_group_size() {
+        const char *e = getenv("GLOBAL_GROUP_SIZE");
+        if (!e || e[0] == '\0') return 8;
+        int v = atoi(e);
+        return (v >= 1) ? v : 8;
+    }
+
+    int env_branch_k() {
+        const char *e = getenv("GLOBAL_BRANCH_K");
+        if (!e || e[0] == '\0') return 8;
+        int v = atoi(e);
+        return (v >= 2) ? v : 8;
+    }
+
+    void compute_levels_and_groups(int npes) {
+        int ng0 = ceil_div(npes, G_LEAF);
+        int levels = 1;
+        int prev = ng0;
+        while (prev > 1) { prev = ceil_div(prev, K); levels++; }
+
+        LEVELS = levels;
+
+        NUM_GROUPS = (int*)shmem_malloc(sizeof(int) * LEVELS);
+        if (!NUM_GROUPS) {
+            std::cout << "ERROR: Unable to allocate space for NUM_GROUPS\n" << std::endl;
+            abort();
+        }
+
+        NUM_GROUPS[0] = ng0;
+        for (int l = 1; l < LEVELS; l++) NUM_GROUPS[l] = ceil_div(NUM_GROUPS[l-1], K);
+    }
+
+    void initialize_hstar_termination() {
+        int npes = shmem_n_pes();
+
+        G_LEAF = env_group_size();
+        K = env_branch_k();
+
+        compute_levels_and_groups(npes);
+
+        int NUM_GROUPS0 = NUM_GROUPS[0];
+
+        // Level-0 per-group per-member flags at group anchors
+        GROUP_PE_DONE = (int**)shmem_malloc(sizeof(int*) * NUM_GROUPS0);
+        if (!GROUP_PE_DONE) {
+            std::cout << "ERROR: Unable to allocate space for GROUP_PE_DONE\n" << std::endl;
+            abort();
+        }
+
+        int *leaf_backing = (int*)shmem_malloc(sizeof(int) * NUM_GROUPS0 * G_LEAF);
+        if (!leaf_backing) {
+            std::cout << "ERROR: Unable to allocate space for leaf_backing\n" << std::endl;
+            abort();
+        }
+
+        for (int g = 0; g < NUM_GROUPS0; g++) {
+            GROUP_PE_DONE[g] = leaf_backing + g * G_LEAF;
+            for (int i = 0; i < G_LEAF; i++) {
+                GROUP_PE_DONE[g][i] = 0;
+            }
+        }
+
+        // Per-level child mailboxes
+        LVL_CHILD_DONE = (int***)shmem_malloc(sizeof(int**) * LEVELS);
+        if (!LVL_CHILD_DONE) {
+            std::cout << "ERROR: Unable to allocate space for LVL_CHILD_DONE\n" << std::endl;
+            abort();
+        }
+
+        for (int l = 0; l < LEVELS; l++) {
+            const int groups = NUM_GROUPS[l];
+            const int cap    = (l == 0) ? G_LEAF : K;
+
+            LVL_CHILD_DONE[l] = (int**)shmem_malloc(sizeof(int*) * groups);
+            if (!LVL_CHILD_DONE[l]) {
+                std::cout << "ERROR: Unable to allocate space for LVL_CHILD_DONE[" << l << "]\n" << std::endl;
+                abort();
+            }
+
+            if (l == 0) {
+                continue;
+            }
+
+            int *backing = (int*)shmem_malloc(sizeof(int) * groups * cap);
+            if (!backing) {
+                std::cout << "ERROR: Unable to allocate space for backing at level " << l << "\n" << std::endl;
+                abort();
+            }
+
+            for (int g = 0; g < groups; g++) {
+                LVL_CHILD_DONE[l][g] = backing + g * cap;
+                for (int i = 0; i < cap; i++) {
+                    LVL_CHILD_DONE[l][g][i] = 0;
+                }
+            }
+        }
+
+        // Alias level-0 to original buffers
+        for (int g = 0; g < NUM_GROUPS0; g++) {
+            LVL_CHILD_DONE[0][g] = GROUP_PE_DONE[g];
+        }
+    }
+
 #ifdef ENABLE_TRACE
     void createPEtoNodeMap() {
         PEtoNodeMap = (int*)shmem_malloc(shmem_n_pes()*sizeof(int));
@@ -760,11 +879,20 @@ class Selector {
     int *GLOBAL_DONE;
     int *LOCAL_DONE;
 
+    // H-STAR termination state
+    int G_LEAF;
+    int K;
+    int LEVELS;
+    int *NUM_GROUPS;
+    int **GROUP_PE_DONE;
+    int ***LVL_CHILD_DONE;
+
     Selector(bool is_start = false) {
         #ifdef ENABLE_TRACE
         createPEtoNodeMap();
         #endif
         initialize_local_global_done();
+        initialize_hstar_termination();
         if(is_start) {
             start();
         }
@@ -914,6 +1042,66 @@ class Selector {
             } else {
                 shmem_int_p(GLOBAL_DONE, -1, pe_id);
             }
+        }
+    }
+
+    void initiate_global_done_v2() { // H-STAR termination protocol
+        const int me   = shmem_my_pe();
+        const int npes = shmem_n_pes();
+
+        // Local completion
+        const int g0   = me / G_LEAF;
+        const int idx0 = me % G_LEAF;
+        const int own0 = static_group_owner_pe(G_LEAF, K, 0, g0);
+
+        *LOCAL_DONE = -1;
+
+        // Leaf: PUT -1 into my slot at my level-0 group owner
+        shmem_int_p(&LVL_CHILD_DONE[0][g0][idx0], -1, own0);
+        shmem_quiet();
+
+        // Upward fan-in across levels
+        for (int l = 0; l < LEVELS; l++) {
+            const int span_l  = group_span_at_level(G_LEAF, K, l);
+            const int g_l     = me / span_l;
+            const int owner_l = static_group_owner_pe(G_LEAF, K, l, g_l);
+
+            if (me == owner_l) {
+                // Determine actual child count for this group at level l
+                int gsize;
+                if (l == 0) {
+                    int start = owner_l;
+                    int end   = start + G_LEAF;
+                    if (end > npes) end = npes;
+                    gsize = end - start;
+                } else {
+                    const int groups_below = NUM_GROUPS[l-1];
+                    const int first_child  = g_l * K;
+                    const int max_child    = first_child + K;
+                    gsize = max_child <= groups_below ? K : (groups_below - first_child);
+                    if (gsize < 0) gsize = 0;
+                }
+
+                // Wait for all children at this level
+                for (int i = 0; i < gsize; i++) {
+                    shmem_int_wait_until(&LVL_CHILD_DONE[l][g_l][i], SHMEM_CMP_EQ, -1);
+                }
+
+                // If not top, notify my parent owner at level (l+1)
+                if (l + 1 < LEVELS) {
+                    const int parent_l     = l + 1;
+                    const int parent_g     = g_l / K;
+                    const int parent_owner = static_group_owner_pe(G_LEAF, K, parent_l, parent_g);
+                    const int my_child_idx = g_l % K;
+                    shmem_int_p(&LVL_CHILD_DONE[parent_l][parent_g][my_child_idx], -1, parent_owner);
+                    shmem_quiet();
+                }
+            }
+        }
+
+        // Root invokes global termination
+        if (me == 0) {
+            global_done();
         }
     }
 
