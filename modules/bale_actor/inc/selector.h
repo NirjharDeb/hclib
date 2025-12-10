@@ -1082,10 +1082,12 @@ class Selector {
                     if (gsize < 0) gsize = 0;
                 }
 
-                // Wait for all children at this level
-                for (int i = 0; i < gsize; i++) {
-                    shmem_int_wait_until(&LVL_CHILD_DONE[l][g_l][i], SHMEM_CMP_EQ, -1);
+            // Wait for all children at this level (yielding to allow worker loop progress)
+            for (int i = 0; i < gsize; i++) {
+                while (LVL_CHILD_DONE[l][g_l][i] != -1) {
+                    hclib::yield_at(nic);
                 }
+            }
 
                 // If not top, notify my parent owner at level (l+1)
                 if (l + 1 < LEVELS) {
